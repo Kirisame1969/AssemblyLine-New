@@ -14,8 +14,10 @@ public class InteractionController : MonoBehaviour
 
     
 
-    [Header("Visuals")]
+    [Header("视觉预制体")]
+    [Tooltip("传送带预制体")]
     public GameObject BeltPrefab;
+    [Tooltip("物品预制体")]
     public GameObject ItemPrefab; // 【新增】物品的视觉预制体 (比如一个黄色小圆圈)
 
     // 记录表现层的 GameObject，键是网格坐标，值是对应的预制体实例
@@ -63,6 +65,20 @@ public class InteractionController : MonoBehaviour
         {
             HandleSpawnItem();
         }
+
+        // 【新增】：时间流速控制
+        if (Input.GetKeyDown(KeyCode.Space))
+        {
+            // 空格键切换 暂停 / 正常
+            if (SimulationController.Instance.CurrentSpeed == TimeSpeed.Paused)
+                SetTimeSpeed(TimeSpeed.Normal);
+            else
+                SetTimeSpeed(TimeSpeed.Paused);
+        }
+        if (Input.GetKeyDown(KeyCode.Alpha1)) SetTimeSpeed(TimeSpeed.Normal); // 数字键 1：正常
+        if (Input.GetKeyDown(KeyCode.Alpha2)) SetTimeSpeed(TimeSpeed.Fast);   // 数字键 2：2倍速
+        if (Input.GetKeyDown(KeyCode.Alpha3)) SetTimeSpeed(TimeSpeed.SuperFast); // 数字键 3：5倍速
+
     }
 
     // --- 放置逻辑 ---
@@ -180,7 +196,12 @@ public class InteractionController : MonoBehaviour
         }
     }
 
-
+    // --- 流速控制逻辑 ---
+    private void SetTimeSpeed(TimeSpeed newSpeed)
+    {
+        SimulationController.Instance.CurrentSpeed = newSpeed;
+        Debug.Log($"游戏流速已切换为: {newSpeed}");
+    }
 
 
 

@@ -1,27 +1,34 @@
+using System;
 using UnityEngine;
 using System.Collections.Generic;
 
+// 定义时间流速枚举 (利用整型作为乘数倍率)
+public enum TimeSpeed { Paused = 0, Normal = 1, Fast = 2, SuperFast = 5 }
+
 public class SimulationController : MonoBehaviour
 {
-    public static SimulationController Instance { get; private set; }
+    public static SimulationController Instance { get; private set; }   // 单例模式
+    public ulong CurrentTick { get; private set; } = 0;                 // 游戏的总tick数
+    public int CurrentCycle { get; private set; } = 1;                  // 当前的游戏周期（天数），从第1天开始
 
-    [Header("Simulation Settings")]
-    public float TickRate = 0.05f; 
-    public ulong CurrentTick { get; private set; } = 0;
+    [Header("时间与流速设置")]
+    public float TickRate = 0.05f;                                      // 逻辑上永远是每 0.05 秒一 Tick
+    public TimeSpeed CurrentSpeed = TimeSpeed.Normal;                   // 游戏时间流速倍速
+    private float _accumulatedTime = 0f;                                // 时间蓄水池，用来帮助计算周期，见update
+    
+    [Header("周期逻辑配置")]
+    [Tooltip("每个周期包含多少个 Tick。默认 600 Tick = 现实 30 秒")]
+    // 假设 20 Ticks = 1秒
+    // 实际游戏中你可以设为 12000 (现实时间 10 分钟)
+    public ulong TicksPerCycle = 600; 
+
+    // 【新增】：周期事件委托，方便未来其他系统（如怪物袭击、按天扣税）订阅
+    public event Action<int> OnNewCycleStarted;
 
     // 活跃物品名单。系统只关心这里的物品。
     public List<ItemData> ActiveItems = new List<ItemData>(); 
 
-    // 注册新物品的方法
-    public void RegisterItem(ItemData newItem)
-    {
-        if (!ActiveItems.Contains(newItem))
-        {
-            ActiveItems.Add(newItem);
-        }
-    }
-
-    private float _accumulatedTime = 0f;
+    
 
     private void Awake()
     {
@@ -31,23 +38,43 @@ public class SimulationController : MonoBehaviour
 
     private void Update()
     {
-        _accumulatedTime += Time.deltaTime;
+        // 【核心修改】：真实流逝的时间 乘以 时间倍率
+        // 如果 Paused (0)，累加时间永远不增加，Tick 就停止跳动，实现完美暂停
+        float multiplier = (int)CurrentSpeed;
+        _accumulatedTime += Time.deltaTime * multiplier;
+
         while (_accumulatedTime >= TickRate)
         {
             PerformTick();
             _accumulatedTime -= TickRate;
         }
 
-        // 逻辑更新后，每帧平滑更新画面表现
+        // 无论是否暂停，画面渲染插值照常进行，确保视觉平滑
         UpdateItemVisuals();
     }
 
-    private void PerformTick()
+    private void PerformTick()//update中调用
     {
         CurrentTick++;
 
-        //处理物品移动
+        // 1. 处理周期逻辑
+        CheckCycleProgress();
+
+        // 2. 处理物品移动
         MoveItems();
+    }
+
+    private void CheckCycleProgress()
+    {
+        // 当当前的 Tick 数量正好是一个周期的整数倍时，触发新周期
+        if (CurrentTick > 0 && CurrentTick % TicksPerCycle == 0)
+        {
+            CurrentCycle++;
+            Debug.Log($"【系统通知】太阳升起！进入第 {CurrentCycle} 周期 (Tick: {CurrentTick})");
+            
+            // 触发事件通知所有订阅者
+            OnNewCycleStarted?.Invoke(CurrentCycle);
+        }
     }
 
     private void MoveItems()
@@ -110,4 +137,14 @@ public class SimulationController : MonoBehaviour
             InteractionController.Instance.RenderItems();
         }
     }
+    
+    // 注册新物品的方法
+    public void RegisterItem(ItemData newItem)
+    {
+        if (!ActiveItems.Contains(newItem))
+        {
+            ActiveItems.Add(newItem);
+        }
+    }
+    
 }
