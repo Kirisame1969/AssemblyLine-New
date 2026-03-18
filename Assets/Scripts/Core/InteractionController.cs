@@ -5,6 +5,14 @@ public class InteractionController : MonoBehaviour
 {
     //单例模式
     public static InteractionController Instance { get; private set; }
+    // 【新增】：定义交互模式
+    public enum InteractionMode { Build, Grab }
+
+    [Header("Cursor Inventory")]
+    public InteractionMode CurrentMode = InteractionMode.Build; // 默认是建造模式
+    private ItemData _cursorItem = null;          // 鼠标当前抓着的物品数据
+    private GameObject _cursorItemVisual = null;  // 鼠标当前抓着的物品视觉表现
+
 
     private void Awake()
     {
@@ -29,11 +37,29 @@ public class InteractionController : MonoBehaviour
 
     private void Update()
     {
-        // 左键：放置
+        // 【新增】：按 Q 键切换 建造/抓取 模式
+        if (Input.GetKeyDown(KeyCode.Q))
+        {
+            CurrentMode = (CurrentMode == InteractionMode.Build) ? InteractionMode.Grab : InteractionMode.Build;
+            Debug.Log($"当前模式切换为: {CurrentMode}");
+        }
+
+        // 鼠标悬停抓取物品的跟随逻辑
+        if (CurrentMode == InteractionMode.Grab && _cursorItemVisual != null)
+        {
+            Vector2 mouseWorldPos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+            _cursorItemVisual.transform.position = mouseWorldPos; // 让物品跟着鼠标动
+        }
+
+        // 左键：放置建筑 或 抓取/放下物品
         if (Input.GetMouseButtonDown(0))
         {
-            HandleLeftClick();
+            if (CurrentMode == InteractionMode.Build)
+                HandleLeftClick();     // 原来的建造逻辑
+            else if (CurrentMode == InteractionMode.Grab)
+                HandleGrabAndDrop();   // 【新增的抓取逻辑】
         }
+        
         // 右键：删除
         if (Input.GetMouseButtonDown(1))
         {
@@ -196,14 +222,76 @@ public class InteractionController : MonoBehaviour
         }
     }
 
-    // --- 流速控制逻辑 ---
+    // --- 时间流速控制逻辑 ---
     private void SetTimeSpeed(TimeSpeed newSpeed)
     {
         SimulationController.Instance.CurrentSpeed = newSpeed;
         Debug.Log($"游戏流速已切换为: {newSpeed}");
     }
 
+    // --- 抓取与放下逻辑 ---
+    private void HandleGrabAndDrop()
+    {
+        Vector2Int gridPos = GetMouseGridPosition();
+        GridCell cell = GridManager.Instance.GetGridCell(gridPos);
 
+        if (cell == null) return;
+
+        // 1. 如果手上是空的，尝试从网格上抓取物品
+        if (_cursorItem == null)
+        {
+            if (cell.Item != null)
+            {
+                // [数据层抽取]
+                _cursorItem = cell.Item;                 // 拿到物品数据
+                cell.Item = null;                        // 清空网格上的物品
+                
+                // 【极其重要】：从活跃名单中移除，让它停止物理移动！
+                SimulationController.Instance.ActiveItems.Remove(_cursorItem);
+
+                // [表现层抽取]
+                if (_spawnedItems.TryGetValue(_cursorItem, out GameObject visualObj))
+                {
+                    Destroy(visualObj);                  // 销毁原来在传送带上的 GameObject
+                    _spawnedItems.Remove(_cursorItem);
+                }
+
+                // 生成一个在鼠标上的视觉对象
+                _cursorItemVisual = Instantiate(ItemPrefab);
+                Debug.Log("抓取了物品！");
+            }
+        }
+        // 2. 如果手上抓着物品，尝试将其放回网格
+        else
+        {
+            // 只有目标格子有传送带，且当前没有物品时，才允许放下
+            if (cell.Belt != null && cell.Item == null)
+            {
+                // [数据层写入]
+                cell.Item = _cursorItem;
+                _cursorItem.CurrentCell = cell; // 更新 GPS 定位
+                _cursorItem.Progress = 0.5f;    // 放在格子正中心（0.5进度）
+
+                // 【极其重要】：重新注册到活跃名单，让它恢复物理移动！
+                SimulationController.Instance.RegisterItem(_cursorItem);
+
+                // [表现层写入]
+                Vector2 spawnPos = GridManager.Instance.GridToWorldPosition(gridPos);
+                GameObject newVisual = Instantiate(ItemPrefab, spawnPos, Quaternion.identity);
+                _spawnedItems.Add(_cursorItem, newVisual);
+
+                // 清空鼠标背包
+                Destroy(_cursorItemVisual);
+                _cursorItem = null;
+                _cursorItemVisual = null;
+                Debug.Log("放下了物品！");
+            }
+            else
+            {
+                Debug.Log("目标位置无法放置物品（没有传送带或已被占用）");
+            }
+        }
+    }
 
     // --- 辅助工具方法 ---
 

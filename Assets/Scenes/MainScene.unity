@@ -395,7 +395,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_Sprite: {fileID: 10905, guid: 0000000000000000f000000000000000, type: 0}
+  m_Sprite: {fileID: 0}
   m_Type: 1
   m_PreserveAspect: 0
   m_FillCenter: 1
@@ -2419,6 +2419,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   TickRate: 0.05
+  CurrentSpeed: 1
+  TicksPerCycle: 600
 --- !u!114 &1575124056
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2431,6 +2433,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 29bed4abd46e9b14fa6bf1ea8011f2a4, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  CurrentMode: 0
   BeltPrefab: {fileID: 3890208247498745892, guid: b2174f4871de01142b98cf9ebf27429a, type: 3}
   ItemPrefab: {fileID: 2123753975976217802, guid: 436dbb43aa08f0b44a99e3616b4288b4, type: 3}
 --- !u!114 &1575124057
