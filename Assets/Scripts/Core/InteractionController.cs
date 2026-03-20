@@ -1,18 +1,38 @@
+
+//---------------------------------------
+
+
+
 using UnityEngine;
+using UnityEngine.EventSystems;
 using System.Collections.Generic;
 
 public class InteractionController : MonoBehaviour
 {
-    //单例模式
+    // 单例模式
     public static InteractionController Instance { get; private set; }
-    // 【新增】：定义交互模式
-    public enum InteractionMode { Build, Grab }
 
-    [Header("Cursor Inventory")]
-    public InteractionMode CurrentMode = InteractionMode.Build; // 默认是建造模式
+#region 核心状态数据
+    [Header("UI建造状态")]
+    public BuildableType CurrentBuildType = BuildableType.None; // 唯一的核心状态机
+
+    [Header("机器拼装预览状态")]
+    private MachineModuleData _previewModule = null; 
+    private List<GameObject> _previewVisuals = new List<GameObject>();
+
+    [Header("上帝之手(物品抓取)状态")]
     private ItemData _cursorItem = null;          // 鼠标当前抓着的物品数据
     private GameObject _cursorItemVisual = null;  // 鼠标当前抓着的物品视觉表现
+#endregion
 
+#region 视觉表现与字典引用
+    [Header("视觉预制体")]
+    public GameObject BeltPrefab;
+    public GameObject ItemPrefab;
+
+    private Dictionary<Vector2Int, GameObject> _spawnedBelts = new Dictionary<Vector2Int, GameObject>();
+    private Dictionary<ItemData, GameObject> _spawnedItems = new Dictionary<ItemData, GameObject>();
+#endregion
 
     private void Awake()
     {
@@ -20,172 +40,260 @@ public class InteractionController : MonoBehaviour
         else Destroy(gameObject);
     }
 
-    
-
-    [Header("视觉预制体")]
-    [Tooltip("传送带预制体")]
-    public GameObject BeltPrefab;
-    [Tooltip("物品预制体")]
-    public GameObject ItemPrefab; // 【新增】物品的视觉预制体 (比如一个黄色小圆圈)
-
-    // 记录表现层的 GameObject，键是网格坐标，值是对应的预制体实例
-    private Dictionary<Vector2Int, GameObject> _spawnedBelts = new Dictionary<Vector2Int, GameObject>();
-    
-    // 记录画面上的物品 GameObject。键是纯数据 ItemData，值是 Unity 的 GameObject
-    private Dictionary<ItemData, GameObject> _spawnedItems = new Dictionary<ItemData, GameObject>();
-
-
+#region 总控循环 (Update)
     private void Update()
     {
-        // 【新增】：按 Q 键切换 建造/抓取 模式
-        if (Input.GetKeyDown(KeyCode.Q))
-        {
-            CurrentMode = (CurrentMode == InteractionMode.Build) ? InteractionMode.Grab : InteractionMode.Build;
-            Debug.Log($"当前模式切换为: {CurrentMode}");
-        }
+        // 1. 全局拦截：防 UI 穿透
+        if (EventSystem.current.IsPointerOverGameObject() && Input.GetMouseButtonDown(0)) return;
 
-        // 鼠标悬停抓取物品的跟随逻辑
-        if (CurrentMode == InteractionMode.Grab && _cursorItemVisual != null)
-        {
-            Vector2 mouseWorldPos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
-            _cursorItemVisual.transform.position = mouseWorldPos; // 让物品跟着鼠标动
-        }
-
-        // 左键：放置建筑 或 抓取/放下物品
-        if (Input.GetMouseButtonDown(0))
-        {
-            if (CurrentMode == InteractionMode.Build)
-                HandleLeftClick();     // 原来的建造逻辑
-            else if (CurrentMode == InteractionMode.Grab)
-                HandleGrabAndDrop();   // 【新增的抓取逻辑】
-        }
-        
-        // 右键：删除
+        // 2. 全局拦截：右键优先级 (取消选中 > 删除实体)
         if (Input.GetMouseButtonDown(1))
         {
-            HandleRightClick();
-        }
-        // R键：旋转鼠标悬停处的传送带
-        if (Input.GetKeyDown(KeyCode.R))
-        {
-            HandleRotate();
-        }
-        // T键：拆分/缝合工具
-        if (Input.GetKeyDown(KeyCode.T))
-        {
-            HandleSplit();
-        }
-
-        // + / - 键：条带速度控制 (可以用小键盘或主键盘的加减号)
-        if (Input.GetKeyDown(KeyCode.Equals) || Input.GetKeyDown(KeyCode.KeypadPlus))
-        {
-            HandleSpeedControl(0.5f); // 每次增加 0.5 速度
-        }
-        if (Input.GetKeyDown(KeyCode.Minus) || Input.GetKeyDown(KeyCode.KeypadMinus))
-        {
-            HandleSpeedControl(-0.5f); // 每次减少 0.5 速度
-        }
-
-        // I键：在当前悬停的传送带上生成一个物品
-        if (Input.GetKeyDown(KeyCode.I))
-        {
-            HandleSpawnItem();
-        }
-
-        // 【新增】：时间流速控制
-        if (Input.GetKeyDown(KeyCode.Space))
-        {
-            // 空格键切换 暂停 / 正常
-            if (SimulationController.Instance.CurrentSpeed == TimeSpeed.Paused)
-                SetTimeSpeed(TimeSpeed.Normal);
+            if (CurrentBuildType != BuildableType.None)
+            {
+                ResetBuildState(); // 手里有图纸，右键就是撕图纸
+                return;
+            }
             else
-                SetTimeSpeed(TimeSpeed.Paused);
+            {
+                HandleDeletion(); // 手里空空，右键就是拆迁队
+            }
         }
-        if (Input.GetKeyDown(KeyCode.Alpha1)) SetTimeSpeed(TimeSpeed.Normal); // 数字键 1：正常
-        if (Input.GetKeyDown(KeyCode.Alpha2)) SetTimeSpeed(TimeSpeed.Fast);   // 数字键 2：2倍速
-        if (Input.GetKeyDown(KeyCode.Alpha3)) SetTimeSpeed(TimeSpeed.SuperFast); // 数字键 3：5倍速
 
+        // 3. 全局热键：时间控制
+        if (Input.GetKeyDown(KeyCode.Space)) SetTimeSpeed(SimulationController.Instance.CurrentSpeed == TimeSpeed.Paused ? TimeSpeed.Normal : TimeSpeed.Paused);
+        if (Input.GetKeyDown(KeyCode.Alpha1)) SetTimeSpeed(TimeSpeed.Normal);
+        if (Input.GetKeyDown(KeyCode.Alpha2)) SetTimeSpeed(TimeSpeed.Fast);
+        if (Input.GetKeyDown(KeyCode.Alpha3)) SetTimeSpeed(TimeSpeed.SuperFast);
+
+        // 4. 状态分发器 (核心重构区)
+        switch (CurrentBuildType)
+        {
+            case BuildableType.None:
+                // 空手状态：只负责抓取物品和基础工具栏
+                HandleGrabAndDrop_Update(); 
+
+                // 独立工具
+                if (Input.GetKeyDown(KeyCode.R)) HandleRotate();
+                if (Input.GetKeyDown(KeyCode.T)) HandleSplit();
+                if (Input.GetKeyDown(KeyCode.I)) HandleSpawnItem();
+                if (Input.GetKeyDown(KeyCode.Equals) || Input.GetKeyDown(KeyCode.KeypadPlus)) HandleSpeedControl(0.5f);
+                if (Input.GetKeyDown(KeyCode.Minus) || Input.GetKeyDown(KeyCode.KeypadMinus)) HandleSpeedControl(-0.5f);
+                break;
+
+            case BuildableType.ConveyorBelt:
+                // 传送带专属建造逻辑
+                HandleBeltPlacement();
+                break;
+
+            case BuildableType.MachineShell_Test:
+                // 机箱放置逻辑
+                HandleShellPlacement();
+                break;
+
+            case BuildableType.Module_Core_1x1:
+            case BuildableType.Module_Rect_2x1:
+            case BuildableType.Module_Rect_2x2:
+                // 模块拼装逻辑
+                UpdateModulePreviewAndPlacement();
+                if (Input.GetKeyDown(KeyCode.R) && _previewModule != null)
+                {
+                    _previewModule.Rotation = (ModuleRotation)(((int)_previewModule.Rotation + 1) % 4);
+                }
+                break;
+        }
+    }
+    #endregion
+
+#region UI 交互与状态清理
+    public void OnBuildButtonClicked(int typeIndex)
+    {
+        ResetBuildState();
+        CurrentBuildType = (BuildableType)typeIndex;
+
+        switch (CurrentBuildType)
+        {
+            case BuildableType.ConveyorBelt: Debug.Log("UI：传送带模式"); break;
+            case BuildableType.MachineShell_Test: Debug.Log("UI：机器外壳模式"); break;
+            case BuildableType.Module_Core_1x1: SelectModule(new MachineCoreData()); break;
+            case BuildableType.Module_Rect_2x1: SelectModule(new RectModuleData(2, 1)); break;
+            case BuildableType.Module_Rect_2x2: SelectModule(new RectModuleData(2, 2)); break;
+            case BuildableType.None: Debug.Log("UI：空手模式"); break;
+        }
     }
 
-    // --- 放置逻辑 ---
-    private void HandleLeftClick()
+    private void SelectModule(MachineModuleData moduleData)
+    {
+        _previewModule = moduleData;
+    }
+
+    private void ResetBuildState()
+    {
+        if (_cursorItemVisual != null)
+        {
+            Destroy(_cursorItemVisual);
+            _cursorItemVisual = null;
+            _cursorItem = null; 
+        }
+
+        foreach (var visual in _previewVisuals) Destroy(visual);
+        _previewVisuals.Clear();
+        _previewModule = null;
+
+        CurrentBuildType = BuildableType.None; 
+    }
+    #endregion
+
+#region 具体建造与拆除逻辑 (被搬家的代码)
+    
+    // 【重构】：原来的 HandleLeftClick 变成了专属的传送带放置
+    private void HandleBeltPlacement()
+    {
+        if (Input.GetMouseButtonDown(0)) // 监听左键
+        {
+            Vector2Int gridPos = GetMouseGridPosition();
+            GridCell cell = GridManager.Instance.GetGridCell(gridPos);
+
+            if (cell != null && cell.Belt == null && cell.ShellRegion == null) // 防止建在机箱里
+            {
+                cell.Belt = new BeltData { Dir = Direction.Up };
+                Vector2 spawnPos = GridManager.Instance.GridToWorldPosition(gridPos);
+                GameObject newBelt = Instantiate(BeltPrefab, spawnPos, Quaternion.identity);
+                _spawnedBelts.Add(gridPos, newBelt);
+                StripManager.Instance.OnBeltModified(gridPos);
+            }
+        }
+    }
+
+    // 【升级】：原来的 HandleRightClick 升级为了通用拆除
+    private void HandleDeletion()
     {
         Vector2Int gridPos = GetMouseGridPosition();
         GridCell cell = GridManager.Instance.GetGridCell(gridPos);
 
-        if (cell != null && cell.Belt == null)
+        if (cell == null) return;
+
+        // 1. 尝试拆除传送带
+        if (cell.Belt != null)
         {
-            // 1. 数据层更新
-            cell.Belt = new BeltData { Dir = Direction.Up };
-
-            // 2. 表现层更新
-            Vector2 spawnPos = GridManager.Instance.GridToWorldPosition(gridPos);
-            GameObject newBelt = Instantiate(BeltPrefab, spawnPos, Quaternion.identity);
-            
-            // 3. 将新生成的视觉对象存入字典
-            _spawnedBelts.Add(gridPos, newBelt);
-
-            // 未来预留：
-            StripManager.Instance.OnBeltModified(gridPos);
-        }
-    }
-
-    // --- 删除逻辑 ---
-    private void HandleRightClick()
-    {
-        Vector2Int gridPos = GetMouseGridPosition();
-        GridCell cell = GridManager.Instance.GetGridCell(gridPos);
-
-        if (cell != null && cell.Belt != null)
-        {
-            // 1. 数据层更新：清空传送带数据
             cell.Belt = null;
-
-            // 2. 表现层更新：销毁对应的 GameObject，并从字典中移除
             if (_spawnedBelts.TryGetValue(gridPos, out GameObject beltVisual))
             {
                 Destroy(beltVisual);
                 _spawnedBelts.Remove(gridPos);
             }
-
-            // 未来预留：
             StripManager.Instance.OnBeltModified(gridPos);
+            Debug.Log("已拆除传送带");
+            return; // 删了一次就停手
+        }
+
+        // 2. 尝试拆除机器外壳 (未来可扩展拆除内部模块)
+        if (cell.ShellRegion != null)
+        {
+            MachineShellData shell = cell.ShellRegion;
+            // 清理这片区域占用的所有网格属性
+            for (int x = 0; x < shell.Bounds.width; x++)
+            {
+                for (int y = 0; y < shell.Bounds.height; y++)
+                {
+                    Vector2Int pos = new Vector2Int(shell.Bounds.xMin + x, shell.Bounds.yMin + y);
+                    GridCell targetCell = GridManager.Instance.GetGridCell(pos);
+                    if (targetCell != null)
+                    {
+                        targetCell.ShellRegion = null;
+                        targetCell.OccupyingModule = null;
+                    }
+                }
+            }
+            // (注：由于我们机箱的地板现在是动态生成的Quad且未集中保存，目前画面上的灰底板暂不会消失。
+            // 未来我们会建立一个 MachineVisualManager 统一处理视觉销毁)
+            foreach (var v in shell.FloorVisuals) Destroy(v);
+            //这里可能是专门用来拆除机器外壳的
+            Debug.Log($"已拆除机器外壳: {shell.ShellID}");
         }
     }
 
-    // --- 旋转逻辑 ---
+    // 【整合】：纯粹的抓取与放下循环
+    private void HandleGrabAndDrop_Update()
+    {
+        // 跟随逻辑
+        if (_cursorItemVisual != null)
+        {
+            Vector2 mouseWorldPos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+            _cursorItemVisual.transform.position = mouseWorldPos;
+        }
+
+        // 点击交互
+        if (Input.GetMouseButtonDown(0))
+        {
+            Vector2Int gridPos = GetMouseGridPosition();
+            GridCell cell = GridManager.Instance.GetGridCell(gridPos);
+            if (cell == null) return;
+
+            if (_cursorItem == null)
+            {
+                // 空手抓取
+                if (cell.Item != null)
+                {
+                    _cursorItem = cell.Item;
+                    cell.Item = null;
+                    SimulationController.Instance.ActiveItems.Remove(_cursorItem);
+
+                    if (_spawnedItems.TryGetValue(_cursorItem, out GameObject visualObj))
+                    {
+                        Destroy(visualObj);
+                        _spawnedItems.Remove(_cursorItem);
+                    }
+
+                    _cursorItemVisual = Instantiate(ItemPrefab);
+                }
+            }
+            else
+            {
+                // 放下物品
+                if (cell.Belt != null && cell.Item == null)
+                {
+                    cell.Item = _cursorItem;
+                    _cursorItem.CurrentCell = cell;
+                    _cursorItem.Progress = 0.5f;
+
+                    SimulationController.Instance.RegisterItem(_cursorItem);
+
+                    Vector2 spawnPos = GridManager.Instance.GridToWorldPosition(gridPos);
+                    GameObject newVisual = Instantiate(ItemPrefab, spawnPos, Quaternion.identity);
+                    _spawnedItems.Add(_cursorItem, newVisual);
+
+                    Destroy(_cursorItemVisual);
+                    _cursorItem = null;
+                    _cursorItemVisual = null;
+                }
+            }
+        }
+    }
+    #endregion
+
+#region 旧工具方法 (旋转/拆分/调速)
+    // 保持原样，没有任何改动
     private void HandleRotate()
     {
         Vector2Int gridPos = GetMouseGridPosition();
         GridCell cell = GridManager.Instance.GetGridCell(gridPos);
-
         if (cell != null && cell.Belt != null)
         {
-            // 1. 数据层更新：方向顺时针旋转 90 度
-            // 利用枚举转换为 int，+1 后取模 4，实现 Up->Right->Down->Left->Up 循环
             int currentDirInt = (int)cell.Belt.Dir;
             cell.Belt.Dir = (Direction)((currentDirInt + 1) % 4);
-
-            // 2. 表现层更新：修改对应 GameObject 的旋转角度
             if (_spawnedBelts.TryGetValue(gridPos, out GameObject beltVisual))
-            {
                 UpdateVisualRotation(beltVisual, cell.Belt.Dir);
-            }
-
-            // 未来预留：
             StripManager.Instance.OnBeltModified(gridPos);
         }
     }
 
-    // --- 拆分逻辑 ---
     private void HandleSplit()
     {
         Vector2Int gridPos = GetMouseGridPosition();
         GridCell cell = GridManager.Instance.GetGridCell(gridPos);
-
         if (cell != null && cell.Belt != null)
         {
-            // 找到它正前方的格子
             Vector2Int forwardPos = gridPos;
             switch (cell.Belt.Dir)
             {
@@ -194,190 +302,350 @@ public class InteractionController : MonoBehaviour
                 case Direction.Down: forwardPos.y -= 1; break;
                 case Direction.Left: forwardPos.x -= 1; break;
             }
-
-            // 切换它们之间的连接状态
             GridManager.Instance.ToggleCutEdge(gridPos, forwardPos);
-
-            // 通知管理器重新计算条带！
             StripManager.Instance.OnBeltModified(gridPos);
-            // 因为牵涉到两个格子，为了安全，把前方格子的状态也抛给管理器刷新
             StripManager.Instance.OnBeltModified(forwardPos); 
         }
     }
 
-    // --- 速度控制逻辑 ---
     private void HandleSpeedControl(float speedChange)
     {
         Vector2Int gridPos = GetMouseGridPosition();
         GridCell cell = GridManager.Instance.GetGridCell(gridPos);
-
         if (cell != null && cell.Belt != null && cell.Belt.ParentStrip != null)
         {
             StripData strip = cell.Belt.ParentStrip;
-            
-            // 调整速度，最低限制为 0.1f 防止倒流或完全卡死（除非你想做停止功能）
             strip.MoveSpeed = Mathf.Max(0.1f, strip.MoveSpeed + speedChange);
-            
-            Debug.Log($"【条带调速】条带 {strip.StripID} (颜色: {strip.StripColor}) 的速度已修改为: {strip.MoveSpeed}");
         }
     }
 
-    // --- 时间流速控制逻辑 ---
     private void SetTimeSpeed(TimeSpeed newSpeed)
     {
         SimulationController.Instance.CurrentSpeed = newSpeed;
-        Debug.Log($"游戏流速已切换为: {newSpeed}");
     }
 
-    // --- 抓取与放下逻辑 ---
-    private void HandleGrabAndDrop()
+    private void HandleSpawnItem()
     {
         Vector2Int gridPos = GetMouseGridPosition();
         GridCell cell = GridManager.Instance.GetGridCell(gridPos);
-
-        if (cell == null) return;
-
-        // 1. 如果手上是空的，尝试从网格上抓取物品
-        if (_cursorItem == null)
+        if (cell != null && cell.Belt != null && cell.Item == null)
         {
-            if (cell.Item != null)
-            {
-                // [数据层抽取]
-                _cursorItem = cell.Item;                 // 拿到物品数据
-                cell.Item = null;                        // 清空网格上的物品
-                
-                // 【极其重要】：从活跃名单中移除，让它停止物理移动！
-                SimulationController.Instance.ActiveItems.Remove(_cursorItem);
-
-                // [表现层抽取]
-                if (_spawnedItems.TryGetValue(_cursorItem, out GameObject visualObj))
-                {
-                    Destroy(visualObj);                  // 销毁原来在传送带上的 GameObject
-                    _spawnedItems.Remove(_cursorItem);
-                }
-
-                // 生成一个在鼠标上的视觉对象
-                _cursorItemVisual = Instantiate(ItemPrefab);
-                Debug.Log("抓取了物品！");
-            }
+            ItemData newItem = new ItemData();
+            cell.Item = newItem;
+            newItem.CurrentCell = cell; 
+            SimulationController.Instance.RegisterItem(newItem);
+            Vector2 spawnPos = GridManager.Instance.GridToWorldPosition(gridPos);
+            GameObject itemObj = Instantiate(ItemPrefab, spawnPos, Quaternion.identity);
+            _spawnedItems.Add(newItem, itemObj);
         }
-        // 2. 如果手上抓着物品，尝试将其放回网格
+    }
+    #endregion
+
+#region 机器模块拼装引擎 (上一轮补充的代码)
+    // ==========================================
+    // 引擎：机器模块的实时预览与放置逻辑
+    // ==========================================
+    private void UpdateModulePreviewAndPlacement()
+    {
+        if (_previewModule == null) return;
+
+        // 1. 获取鼠标在世界空间的网格坐标
+        Vector2 mouseWorld = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+        // 注意：这里使用 RoundToInt 还是 FloorToInt 取决于你游戏网格对齐的基准设定
+        Vector2Int worldPos = new Vector2Int(Mathf.RoundToInt(mouseWorld.x), Mathf.RoundToInt(mouseWorld.y)); 
+
+        // 2. 探查鼠标下方的大世界网格，看看有没有“机箱”存在
+        GridCell hoverCell = GridManager.Instance.GetGridCell(worldPos);
+        MachineShellData targetShell = hoverCell?.ShellRegion;
+
+        bool canPlace = false;
+
+        // 3. 坐标系转换与四重锁校验
+        if (targetShell != null)
+        {
+            // 如果下方有机箱：计算出局部坐标并赋给模块
+            Vector2Int localPos = new Vector2Int(worldPos.x - targetShell.Bounds.xMin, worldPos.y - targetShell.Bounds.yMin);
+            _previewModule.LocalBottomLeft = localPos;
+            
+            canPlace = MachineManager.Instance.CanPlaceModule(targetShell, _previewModule);
+        }
         else
         {
-            // 只有目标格子有传送带，且当前没有物品时，才允许放下
-            if (cell.Belt != null && cell.Item == null)
+            // 【Bug修复】：如果下方是空地，将模块的局部原点重置为 (0,0)
+            // 这样在外部画图时，坐标才不会叠加之前的残留量
+            _previewModule.LocalBottomLeft = Vector2Int.zero; 
+            
+            canPlace = false;
+        }
+
+        // 4. 渲染红绿灯虚影
+        UpdatePreviewVisuals(targetShell, canPlace, worldPos);
+
+        // 5. 执行放置 (左键点击)
+        if (Input.GetMouseButtonDown(0))
+        {
+            if (canPlace && targetShell != null)
             {
-                // [数据层写入]
-                cell.Item = _cursorItem;
-                _cursorItem.CurrentCell = cell; // 更新 GPS 定位
-                _cursorItem.Progress = 0.5f;    // 放在格子正中心（0.5进度）
-
-                // 【极其重要】：重新注册到活跃名单，让它恢复物理移动！
-                SimulationController.Instance.RegisterItem(_cursorItem);
-
-                // [表现层写入]
-                Vector2 spawnPos = GridManager.Instance.GridToWorldPosition(gridPos);
-                GameObject newVisual = Instantiate(ItemPrefab, spawnPos, Quaternion.identity);
-                _spawnedItems.Add(_cursorItem, newVisual);
-
-                // 清空鼠标背包
-                Destroy(_cursorItemVisual);
-                _cursorItem = null;
-                _cursorItemVisual = null;
-                Debug.Log("放下了物品！");
+                // 正式写入数据
+                MachineManager.Instance.PlaceModule(targetShell, _previewModule);
+                
+                // 【注意】：放置成功后清空双手。
+                // 如果你想实现像异星工厂一样“点一次放一个，可以连续放置”，
+                // 你需要在这里不调用 ResetBuildState，而是重新 new 一个相同类型的模块赋值给 _previewModule。
+                // 目前我们先采用最稳妥的“放完就清空”模式：
+                ResetBuildState(); 
             }
             else
             {
-                Debug.Log("目标位置无法放置物品（没有传送带或已被占用）");
+                Debug.LogWarning("❌ 放置失败：位置不合法或不在机箱内部！");
+            }
+        }
+        
+    }
+
+    // ==========================================
+    // 渲染：动态更新悬浮的红绿方块
+    // ==========================================
+    private void UpdatePreviewVisuals(MachineShellData targetShell, bool canPlace, Vector2Int fallbackWorldPos)
+    {
+        // 颜色定义：绿灯(允许) / 红灯(禁止)
+        Color previewColor = canPlace ? new Color(0, 1, 0, 0.5f) : new Color(1, 0, 0, 0.5f);
+
+        // 获取模块当前旋转状态下需要占用的所有坐标
+        List<Vector2Int> occupiedCells = _previewModule.GetOccupiedLocalCells();
+
+        // 如果现有的视觉块数量对不上（比如刚按了旋转键，或者刚抓起模块），就重新生成
+        if (_previewVisuals.Count != occupiedCells.Count)
+        {
+            // 清理旧的
+            foreach (var v in _previewVisuals) Destroy(v);
+            _previewVisuals.Clear();
+
+            // 生成新的 (这里为了演示继续用 Quad，实际开发建议用你自己的 Prefab)
+            for (int i = 0; i < occupiedCells.Count; i++)
+            {
+                GameObject quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
+                Destroy(quad.GetComponent<Collider>()); // 关掉碰撞体防止挡鼠标
+                
+                Renderer r = quad.GetComponent<Renderer>();
+                r.material = new Material(Shader.Find("Sprites/Default")); // 使用支持半透明的默认精灵材质
+                
+                _previewVisuals.Add(quad);
+            }
+        }
+
+        // 实时更新每一个方块的位置和颜色
+        for (int i = 0; i < occupiedCells.Count; i++)
+        {
+            Vector2Int localCell = occupiedCells[i];
+            Vector2 worldCellPos;
+
+            if (targetShell != null)
+            {
+                // 如果有机箱，基于机箱原点计算世界坐标
+                worldCellPos = new Vector2(targetShell.Bounds.xMin + localCell.x, targetShell.Bounds.yMin + localCell.y);
+            }
+            else
+            {
+                // 如果在野外，就直接以鼠标当前位置为基准画红块
+                worldCellPos = new Vector2(fallbackWorldPos.x + localCell.x, fallbackWorldPos.y + localCell.y);
+            }
+
+            _previewVisuals[i].transform.position = new Vector3(worldCellPos.x, worldCellPos.y, 0);
+            _previewVisuals[i].GetComponent<Renderer>().material.color = previewColor;
+        }
+    }
+
+    // ==========================================
+    // 引擎：机器外壳(Shell)的实时预览与放置逻辑
+    // ==========================================
+    private void HandleShellPlacement()
+    {
+        // 假设我们的测试机箱是 3x4 大小
+        int shellWidth = 3;
+        int shellHeight = 4;
+
+        // 1. 获取鼠标在世界空间的网格坐标 (作为机箱的左下角原点)
+        Vector2 mouseWorld = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+        Vector2Int worldOrigin = new Vector2Int(Mathf.RoundToInt(mouseWorld.x), Mathf.RoundToInt(mouseWorld.y));
+
+        bool canPlaceShell = true;
+
+        // 2. 探查大世界网格：确保这 3x4 的区域是完全空旷的
+        for (int x = 0; x < shellWidth; x++)
+        {
+            for (int y = 0; y < shellHeight; y++)
+            {
+                Vector2Int checkPos = new Vector2Int(worldOrigin.x + x, worldOrigin.y + y);
+                GridCell cell = GridManager.Instance.GetGridCell(checkPos);
+
+                // 如果该位置超出了世界地图，或者已经有了别的机箱/传送带，则不允许放置
+                if (cell == null || cell.ShellRegion != null || cell.Belt != null)
+                {
+                    canPlaceShell = false;
+                    break;
+                }
+            }
+        }
+
+        // 3. 绘制机箱的红绿灯预览 (复用 _previewVisuals)
+        UpdateShellPreviewVisuals(worldOrigin, shellWidth, shellHeight, canPlaceShell);
+
+        // 4. 执行放置 (左键点击)
+        if (Input.GetMouseButtonDown(0))
+        {
+            if (canPlaceShell)
+            {
+                // 创建真实的机壳数据
+                RectInt bounds = new RectInt(worldOrigin.x, worldOrigin.y, shellWidth, shellHeight);
+                MachineShellData newShell = new MachineShellData(bounds);
+
+                // 【硬编码加入我们之前设计的测试障碍】
+                // 加入横向隔断墙
+                newShell.PartitionWalls.Add(new InternalWall(new Vector2Int(0, 1), new Vector2Int(0, 2)));
+                newShell.PartitionWalls.Add(new InternalWall(new Vector2Int(1, 1), new Vector2Int(1, 2)));
+                // 加入右上角的绝对死区
+                newShell.DeadCells.Add(new Vector2Int(2, 3));
+
+                // 正式将机壳注册到大世界网格中，并生成实体的底板视觉效果
+                PlaceShellInWorld(newShell);
+                
+                // 放置完毕，清空双手
+                ResetBuildState();
+                Debug.Log($"✅ 成功放置了测试机箱！位置: {worldOrigin}");
+            }
+            else
+            {
+                Debug.LogWarning("❌ 这里放不下机箱！有东西挡住了。");
             }
         }
     }
 
-    // --- 辅助工具方法 ---
+    // ==========================================
+    // 渲染：更新机壳悬浮预览 (类似于模块预览，但它是 3x4 的一大块)
+    // ==========================================
+    private void UpdateShellPreviewVisuals(Vector2Int origin, int width, int height, bool canPlace)
+    {
+        Color previewColor = canPlace ? new Color(0, 1, 0, 0.3f) : new Color(1, 0, 0, 0.3f);
 
-    // 获取当前鼠标所在的网格坐标
+        // 如果视觉块数量不对 (3x4 = 12格)，重新生成
+        int requiredCount = width * height;
+        if (_previewVisuals.Count != requiredCount)
+        {
+            foreach (var v in _previewVisuals) Destroy(v);
+            _previewVisuals.Clear();
+
+            for (int i = 0; i < requiredCount; i++)
+            {
+                GameObject quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
+                Destroy(quad.GetComponent<Collider>());
+                Renderer r = quad.GetComponent<Renderer>();
+                r.material = new Material(Shader.Find("Sprites/Default"));
+                _previewVisuals.Add(quad);
+            }
+        }
+
+        // 排列这 12 个方块，组成 3x4 的形状跟随鼠标
+        int index = 0;
+        for (int x = 0; x < width; x++)
+        {
+            for (int y = 0; y < height; y++)
+            {
+                _previewVisuals[index].transform.position = new Vector3(origin.x + x, origin.y + y, 0);
+                _previewVisuals[index].GetComponent<Renderer>().material.color = previewColor;
+                index++;
+            }
+        }
+    }
+
+    // ==========================================
+    // 落地：真正将机壳写入世界，并生成永久的底板图案
+    // ==========================================
+    private void PlaceShellInWorld(MachineShellData shell)
+    {
+        for (int x = 0; x < shell.Bounds.width; x++)
+        {
+            for (int y = 0; y < shell.Bounds.height; y++)
+            {
+                Vector2Int worldPos = new Vector2Int(shell.Bounds.xMin + x, shell.Bounds.yMin + y);
+                Vector2Int localPos = new Vector2Int(x, y);
+
+                // 1. 写入数据：标记该网格属于这个机壳
+                GridCell cell = GridManager.Instance.GetGridCell(worldPos);
+                if (cell != null)
+                {
+                    cell.ShellRegion = shell;
+                }
+
+                // 2. 生成永久的视觉底板 (这里用简单的颜色方块代替未来的贴图)
+                GameObject floorQuad = GameObject.CreatePrimitive(PrimitiveType.Quad);
+
+                shell.FloorVisuals.Add(floorQuad);
+
+                floorQuad.transform.position = new Vector3(worldPos.x, worldPos.y, 0);
+                Destroy(floorQuad.GetComponent<Collider>()); // 去掉碰撞体
+                
+                Renderer r = floorQuad.GetComponent<Renderer>();
+                r.material = new Material(Shader.Find("Sprites/Default"));
+                
+                // 给死区标记黑色，可用区域标记深灰色
+                if (shell.DeadCells.Contains(localPos))
+                {
+                    r.material.color = new Color(0.1f, 0.1f, 0.1f, 1f); // 黑色死区
+                }
+                else
+                {
+                    r.material.color = new Color(0.4f, 0.4f, 0.4f, 0.6f); // 灰色可用底板
+                }
+                
+                // （注意：在实际项目中，你应该把这些生成的视觉对象放在一个统一的父节点下管理，
+                // 或者保存在 Shell 数据结构里，方便未来拆除机箱时一起销毁。）
+            }
+        }
+    }
+    #endregion
+
+#region 辅助与渲染方法
+    // 保持原样
     private Vector2Int GetMouseGridPosition()
     {
         Vector2 mouseWorldPos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
         return GridManager.Instance.WorldToGridPosition(mouseWorldPos);
     }
 
-    // 根据方向更新 2D 视觉旋转
     private void UpdateVisualRotation(GameObject visualObj, Direction dir)
     {
         float angle = 0f;
         switch (dir)
         {
             case Direction.Up: angle = 0f; break;
-            case Direction.Right: angle = -90f; break; // 2D中顺时针旋转是负角度
+            case Direction.Right: angle = -90f; break; 
             case Direction.Down: angle = 180f; break;
             case Direction.Left: angle = 90f; break;
         }
         visualObj.transform.rotation = Quaternion.Euler(0, 0, angle);
     }
 
-    // --- 视觉更新逻辑 ---
-    
-    // 遍历所有已生成的传送带，根据它们所属的 StripData 更新颜色
     public void UpdateBeltColorVisuals()
     {
         foreach (var kvp in _spawnedBelts)
         {
             Vector2Int pos = kvp.Key;
-            GameObject beltObj = kvp.Value;
-
             GridCell cell = GridManager.Instance.GetGridCell(pos);
-            
-            // 确保格子上有传送带，并且它已经被分配到了某个条带中
             if (cell != null && cell.Belt != null && cell.Belt.ParentStrip != null)
             {
-                Color stripColor = cell.Belt.ParentStrip.StripColor;
-                
-                // 获取传送带预制体上的 SpriteRenderer 组件并修改颜色
-                SpriteRenderer sr = beltObj.GetComponent<SpriteRenderer>();
-                if (sr != null)
-                {
-                    sr.color = stripColor;
-                }
+                SpriteRenderer sr = kvp.Value.GetComponent<SpriteRenderer>();
+                if (sr != null) sr.color = cell.Belt.ParentStrip.StripColor;
             }
         }
     }
 
-    // --- 物品生成逻辑 ---
-    private void HandleSpawnItem()
-    {
-        Vector2Int gridPos = GetMouseGridPosition();
-        GridCell cell = GridManager.Instance.GetGridCell(gridPos);
-
-        // 只有在有传送带、且当前格子没有物品时，才允许生成
-        if (cell != null && cell.Belt != null && cell.Item == null)
-        {
-            ItemData newItem = new ItemData();
-            cell.Item = newItem;
-
-            // 【新增 1】：给新物品装上 GPS
-            newItem.CurrentCell = cell; 
-            
-            // 【新增 2】：把它交接给模拟控制器的“活跃名单”
-            SimulationController.Instance.RegisterItem(newItem);
-
-            // 生成视觉对象
-            Vector2 spawnPos = GridManager.Instance.GridToWorldPosition(gridPos);
-            GameObject itemObj = Instantiate(ItemPrefab, spawnPos, Quaternion.identity);
-            
-            _spawnedItems.Add(newItem, itemObj);
-        }
-    }
-
-    // --- 物品渲染逻辑 (由 SimulationController 每帧调用) ---
     public void RenderItems()
     {
         foreach (var kvp in _spawnedItems)
         {
             ItemData itemData = kvp.Key;
             GameObject itemObj = kvp.Value;
-
-            // 【极致优化】：原来这里有几十行全网格搜索代码，现在只需 O(1) 的一次读取！
             GridCell currentCell = itemData.CurrentCell; 
 
             if (currentCell != null)
@@ -388,7 +656,6 @@ public class InteractionController : MonoBehaviour
                 if (currentCell.Belt != null)
                 {
                     float shift = (itemData.Progress - 0.5f) * GridManager.Instance.CellSize;
-                    
                     switch (currentCell.Belt.Dir)
                     {
                         case Direction.Up: offset = new Vector2(0, shift); break;
@@ -397,9 +664,9 @@ public class InteractionController : MonoBehaviour
                         case Direction.Left: offset = new Vector2(-shift, 0); break;
                     }
                 }
-
                 itemObj.transform.position = centerPos + offset;
             }
         }
     }
+    #endregion
 }
