@@ -41,7 +41,7 @@ public class MachineShellData
 {
     public string ShellID;
     public RectInt Bounds; // 世界坐标下的包围盒 (x,y为左下角)
-    //地板视觉效果
+    // 【新增】：用来存放生成在地上的那 12 个灰色底板 GameObject
     public List<GameObject> FloorVisuals = new List<GameObject>();
 
     // 【节点锁】：绝对死区。记录机箱内部完全无法放置任何东西的“坏死/承重柱”局部坐标

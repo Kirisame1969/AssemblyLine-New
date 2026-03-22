@@ -207,8 +207,14 @@ public class InteractionController : MonoBehaviour
             }
             // (注：由于我们机箱的地板现在是动态生成的Quad且未集中保存，目前画面上的灰底板暂不会消失。
             // 未来我们会建立一个 MachineVisualManager 统一处理视觉销毁)
-            foreach (var v in shell.FloorVisuals) Destroy(v);
-            //这里可能是专门用来拆除机器外壳的
+            //foreach (var v in shell.FloorVisuals) Destroy(v);
+            //这里可能是专门用来拆除机器外壳的？
+            // 【新增】：销毁画面上的视觉底板
+            foreach (GameObject visualQuad in shell.FloorVisuals)
+            {
+                Destroy(visualQuad);
+            }
+            shell.FloorVisuals.Clear();
             Debug.Log($"已拆除机器外壳: {shell.ShellID}");
         }
     }
@@ -350,9 +356,8 @@ public class InteractionController : MonoBehaviour
         if (_previewModule == null) return;
 
         // 1. 获取鼠标在世界空间的网格坐标
-        Vector2 mouseWorld = Camera.main.ScreenToWorldPoint(Input.mousePosition);
-        // 注意：这里使用 RoundToInt 还是 FloorToInt 取决于你游戏网格对齐的基准设定
-        Vector2Int worldPos = new Vector2Int(Mathf.RoundToInt(mouseWorld.x), Mathf.RoundToInt(mouseWorld.y)); 
+        // 【修复】：统一使用标准网格定位，废弃 ScreenToWorldPoint 后的四舍五入
+        Vector2Int worldPos = GetMouseGridPosition();
 
         // 2. 探查鼠标下方的大世界网格，看看有没有“机箱”存在
         GridCell hoverCell = GridManager.Instance.GetGridCell(worldPos);
@@ -451,7 +456,11 @@ public class InteractionController : MonoBehaviour
                 worldCellPos = new Vector2(fallbackWorldPos.x + localCell.x, fallbackWorldPos.y + localCell.y);
             }
 
-            _previewVisuals[i].transform.position = new Vector3(worldCellPos.x, worldCellPos.y, 0);
+            // worldCellPos 目前是个 Vector2（之前写错了类型），把它转回标准的 Grid 坐标再输出
+            Vector2Int currentGridPos = new Vector2Int(Mathf.RoundToInt(worldCellPos.x), Mathf.RoundToInt(worldCellPos.y));
+            Vector2 exactPos = GridManager.Instance.GridToWorldPosition(currentGridPos);
+
+            _previewVisuals[i].transform.position = new Vector3(exactPos.x, exactPos.y, 0);
             _previewVisuals[i].GetComponent<Renderer>().material.color = previewColor;
         }
     }
@@ -466,9 +475,9 @@ public class InteractionController : MonoBehaviour
         int shellHeight = 4;
 
         // 1. 获取鼠标在世界空间的网格坐标 (作为机箱的左下角原点)
-        Vector2 mouseWorld = Camera.main.ScreenToWorldPoint(Input.mousePosition);
-        Vector2Int worldOrigin = new Vector2Int(Mathf.RoundToInt(mouseWorld.x), Mathf.RoundToInt(mouseWorld.y));
-
+        // 【修复】：统一使用你的网格获取方法，废弃 Mathf.RoundToInt
+        Vector2Int worldOrigin = GetMouseGridPosition();
+        
         bool canPlaceShell = true;
 
         // 2. 探查大世界网格：确保这 3x4 的区域是完全空旷的
@@ -551,7 +560,11 @@ public class InteractionController : MonoBehaviour
         {
             for (int y = 0; y < height; y++)
             {
-                _previewVisuals[index].transform.position = new Vector3(origin.x + x, origin.y + y, 0);
+                // 【修复】：用 GridManager 算出精准的世界坐标
+                Vector2Int currentGridPos = new Vector2Int(origin.x + x, origin.y + y);
+                Vector2 exactPos = GridManager.Instance.GridToWorldPosition(currentGridPos);
+                
+                _previewVisuals[index].transform.position = new Vector3(exactPos.x, exactPos.y, 0);
                 _previewVisuals[index].GetComponent<Renderer>().material.color = previewColor;
                 index++;
             }
@@ -578,11 +591,16 @@ public class InteractionController : MonoBehaviour
                 }
 
                 // 2. 生成永久的视觉底板 (这里用简单的颜色方块代替未来的贴图)
+                // 【修复】：将网格坐标转换为真实的世界坐标轴，再赋值给生成物
+                Vector2 exactWorldPos = GridManager.Instance.GridToWorldPosition(worldPos);
+
                 GameObject floorQuad = GameObject.CreatePrimitive(PrimitiveType.Quad);
 
+                // 【新增】：把生成的肉体存进数据里！
                 shell.FloorVisuals.Add(floorQuad);
-
-                floorQuad.transform.position = new Vector3(worldPos.x, worldPos.y, 0);
+                
+                // 使用转换后的 exactWorldPos，而不是直接用 worldPos.x
+                floorQuad.transform.position = new Vector3(exactWorldPos.x, exactWorldPos.y, 0); 
                 Destroy(floorQuad.GetComponent<Collider>()); // 去掉碰撞体
                 
                 Renderer r = floorQuad.GetComponent<Renderer>();
