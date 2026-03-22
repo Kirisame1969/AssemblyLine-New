@@ -48,8 +48,9 @@ public class MachineManager : MonoBehaviour
                 return false;
             }
         }
-
+        // ==========================================
         // 【第四重锁】：便当盒隔断锁
+        // ==========================================
         // 获取模块作为一个整体，内部必须连通的接缝
         List<InternalWall> requiredConnections = module.GetRequiredInternalConnections();
         foreach (InternalWall conn in requiredConnections)
@@ -58,6 +59,36 @@ public class MachineManager : MonoBehaviour
             if (shell.PartitionWalls.Contains(conn))
             {
                 Debug.LogWarning($"[放置失败] 模块内部连通性被机箱隔断墙切断! 阻挡位置: {conn.CellA} <-> {conn.CellB}");
+                return false;
+            }
+        }
+
+        // ==========================================
+        // 【第五重锁】：I/O 匣子的边缘与朝向锁
+        // ==========================================
+        if (module is InputPortData || module is OutputPortData)
+        {
+            Vector2Int pos = module.LocalBottomLeft; // I/O 匣子是 1x1，只看这一个坐标
+            Direction facing = (module is InputPortData input) ? input.FacingDir : ((OutputPortData)module).FacingDir;
+
+            int maxX = shell.Bounds.width - 1;
+            int maxY = shell.Bounds.height - 1;
+
+            bool isValidEdgeAndFacing = false;
+
+            // 检查：是否在顶部边缘，且朝上？
+            if (pos.y == maxY && facing == Direction.Up) isValidEdgeAndFacing = true;
+            // 检查：是否在底部边缘，且朝下？
+            else if (pos.y == 0 && facing == Direction.Down) isValidEdgeAndFacing = true;
+            // 检查：是否在右侧边缘，且朝右？
+            else if (pos.x == maxX && facing == Direction.Right) isValidEdgeAndFacing = true;
+            // 检查：是否在左侧边缘，且朝左？
+            else if (pos.x == 0 && facing == Direction.Left) isValidEdgeAndFacing = true;
+
+            if (!isValidEdgeAndFacing)
+            {
+                // 如果既不贴边，开口也不朝外，直接亮红灯！
+                Debug.LogWarning($"[放置失败] I/O 匣子必须放在机箱边缘，且开口必须朝向外部！当前坐标:{pos}, 朝向:{facing}");
                 return false;
             }
         }

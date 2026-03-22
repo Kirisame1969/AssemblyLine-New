@@ -30,8 +30,16 @@ public class InteractionController : MonoBehaviour
     public GameObject BeltPrefab;
     public GameObject ItemPrefab;
 
+    // 【新增】：公开的贴图插槽
+    public Sprite CoreSprite;         // 核心贴图
+    public Sprite InputPortSprite;    // 输入匣贴图
+    public Sprite OutputPortSprite;   // 输出匣贴图
+    public Sprite DefaultModuleSprite;// 普通模块贴图
+
     private Dictionary<Vector2Int, GameObject> _spawnedBelts = new Dictionary<Vector2Int, GameObject>();
     private Dictionary<ItemData, GameObject> _spawnedItems = new Dictionary<ItemData, GameObject>();
+
+
 #endregion
 
     private void Awake()
@@ -94,6 +102,8 @@ public class InteractionController : MonoBehaviour
             case BuildableType.Module_Core_1x1:
             case BuildableType.Module_Rect_2x1:
             case BuildableType.Module_Rect_2x2:
+            case BuildableType.Module_InputPort:
+            case BuildableType.Module_OutputPort:
                 // 模块拼装逻辑
                 UpdateModulePreviewAndPlacement();
                 if (Input.GetKeyDown(KeyCode.R) && _previewModule != null)
@@ -113,12 +123,35 @@ public class InteractionController : MonoBehaviour
 
         switch (CurrentBuildType)
         {
-            case BuildableType.ConveyorBelt: Debug.Log("UI：传送带模式"); break;
-            case BuildableType.MachineShell_Test: Debug.Log("UI：机器外壳模式"); break;
-            case BuildableType.Module_Core_1x1: SelectModule(new MachineCoreData()); break;
-            case BuildableType.Module_Rect_2x1: SelectModule(new RectModuleData(2, 1)); break;
-            case BuildableType.Module_Rect_2x2: SelectModule(new RectModuleData(2, 2)); break;
-            case BuildableType.None: Debug.Log("UI：空手模式"); break;
+            case BuildableType.ConveyorBelt: 
+                Debug.Log("UI：传送带模式"); 
+                break;
+            case BuildableType.MachineShell_Test: 
+                Debug.Log("UI：机器外壳模式"); 
+                break;
+            case BuildableType.Module_Core_1x1: 
+                SelectModule(new MachineCoreData()); 
+                Debug.Log("UI：1x1模块");
+                break;
+            case BuildableType.Module_Rect_2x1: 
+                SelectModule(new RectModuleData(2, 1)); 
+                Debug.Log("UI：1x2模块");
+                break;
+            case BuildableType.Module_Rect_2x2: 
+                SelectModule(new RectModuleData(2, 2)); 
+                Debug.Log("UI：2x2模块");
+                break;
+            case BuildableType.Module_InputPort:
+                Debug.Log("UI：输入匣");
+                SelectModule(new InputPortData());
+                break;
+            case BuildableType.Module_OutputPort:
+                Debug.Log("UI：输出匣");
+                SelectModule(new OutputPortData());
+                break;
+            case BuildableType.None: 
+                Debug.Log("UI：空手模式"); 
+                break;
         }
     }
 
@@ -215,6 +248,14 @@ public class InteractionController : MonoBehaviour
                 Destroy(visualQuad);
             }
             shell.FloorVisuals.Clear();
+
+            // 【新增】：将机箱内部所有的模块贴图一并销毁！
+            foreach (GameObject modVisual in shell.ModuleVisuals)
+            {
+                Destroy(modVisual);
+            }
+            shell.ModuleVisuals.Clear();
+
             Debug.Log($"已拆除机器外壳: {shell.ShellID}");
         }
     }
@@ -398,11 +439,13 @@ public class InteractionController : MonoBehaviour
                 // 如果你想实现像异星工厂一样“点一次放一个，可以连续放置”，
                 // 你需要在这里不调用 ResetBuildState，而是重新 new 一个相同类型的模块赋值给 _previewModule。
                 // 目前我们先采用最稳妥的“放完就清空”模式：
+                // 【新增】：底层数据写完后，在画面上真正生成你的精美贴图！
+                SpawnModuleVisual(targetShell, _previewModule);
                 ResetBuildState(); 
             }
             else
             {
-                Debug.LogWarning("❌ 放置失败：位置不合法或不在机箱内部！");
+                Debug.LogWarning("放置失败：位置不合法或不在机箱内部！");
             }
         }
         
@@ -687,4 +730,54 @@ public class InteractionController : MonoBehaviour
         }
     }
     #endregion
+
+
+#region 新区域
+    // ==========================================
+    // 视觉落地：在机箱内生成真实的模块贴图实体
+    // ==========================================
+    private void SpawnModuleVisual(MachineShellData shell, MachineModuleData module)
+    {
+        // 遍历模块占用的每一个格子 (1x1模块遍历1次，2x2模块会遍历4次铺设贴图)
+        foreach (Vector2Int localPos in module.GetOccupiedLocalCells())
+        {
+            // 1. 计算精确的世界坐标
+            Vector2Int worldGridPos = new Vector2Int(shell.Bounds.xMin + localPos.x, shell.Bounds.yMin + localPos.y);
+            Vector2 exactPos = GridManager.Instance.GridToWorldPosition(worldGridPos);
+
+            // 2. 创建一个干净的空物体
+            GameObject modVisual = new GameObject($"Module_{module.GetType().Name}");
+            // Z轴设为 -0.1f，保证贴图显示在机箱底板(0f)的前面，防止画面闪烁
+            modVisual.transform.position = new Vector3(exactPos.x, exactPos.y, -0.1f); 
+
+            // 3. 挂载 Unity 官方的 2D 贴图渲染器
+            SpriteRenderer sr = modVisual.AddComponent<SpriteRenderer>();
+
+            // 4. 根据模块的类型，塞入对应的贴图，并处理旋转
+            if (module is MachineCoreData)
+            {
+                sr.sprite = CoreSprite;
+            }
+            else if (module is InputPortData inputPort)
+            {
+                sr.sprite = InputPortSprite;
+                // 复用你之前写给传送带的旋转方法，让贴图方向完美匹配内部数据！
+                UpdateVisualRotation(modVisual, inputPort.FacingDir); 
+            }
+            else if (module is OutputPortData outputPort)
+            {
+                sr.sprite = OutputPortSprite;
+                UpdateVisualRotation(modVisual, outputPort.FacingDir);
+            }
+            else
+            {
+                sr.sprite = DefaultModuleSprite;
+            }
+
+            // 5. 将生成的视觉实体扔进机箱的“垃圾袋”，方便未来统一销毁
+            shell.ModuleVisuals.Add(modVisual);
+        }
+    }
+    #endregion
+
 }

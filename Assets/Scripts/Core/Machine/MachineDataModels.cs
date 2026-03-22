@@ -14,7 +14,6 @@ public struct InternalWall : IEquatable<InternalWall>
     public InternalWall(Vector2Int a, Vector2Int b)
     {
         // 强制规范化：始终保证较小的坐标在前面。
-        // 这样即使输入 (0,1)和(0,0)，也会被存为 A=(0,0), B=(0,1)，方便判断相等。
         if (a.x < b.x || (a.x == b.x && a.y < b.y))
         {
             CellA = a; CellB = b;
@@ -41,7 +40,8 @@ public class MachineShellData
 {
     public string ShellID;
     public RectInt Bounds; // 世界坐标下的包围盒 (x,y为左下角)
-    // 【新增】：用来存放生成在地上的那 12 个灰色底板 GameObject
+    
+    // 用来存放生成在地上的那 12 个灰色底板 GameObject
     public List<GameObject> FloorVisuals = new List<GameObject>();
 
     // 【节点锁】：绝对死区。记录机箱内部完全无法放置任何东西的“坏死/承重柱”局部坐标
@@ -50,8 +50,18 @@ public class MachineShellData
     // 【边缘锁】：便当盒隔断。记录机箱内部阻挡模块跨越的墙壁
     public HashSet<InternalWall> PartitionWalls = new HashSet<InternalWall>();
 
-    // 内部已放置的模块列表
+    // 内部已放置的模块全量列表
     public List<MachineModuleData> Modules = new List<MachineModuleData>();
+
+    // ==========================================
+    // 【新增】：局域网路由索引表 (用于瞬间物流)
+    // ==========================================
+    public MachineCoreData MainCore;
+    public List<InputPortData> InputPorts = new List<InputPortData>();
+    public List<OutputPortData> OutputPorts = new List<OutputPortData>();
+
+    // 【新增】：用来存放机器内部所有模块的贴图 GameObject
+    public List<GameObject> ModuleVisuals = new List<GameObject>();
 
     public MachineShellData(RectInt bounds)
     {
@@ -78,26 +88,7 @@ public abstract class MachineModuleData
 
 // --- 5. 具体的模块实现示例 ---
 
-// 5.1 核心主板 (固定 1x1)
-public class MachineCoreData : MachineModuleData
-{
-    // 预留的输入输出清单
-    // public List<ItemData> InputInventory = new List<ItemData>();
-    // public List<ItemData> OutputInventory = new List<ItemData>();
-
-    public override List<Vector2Int> GetOccupiedLocalCells()
-    {
-        return new List<Vector2Int> { LocalBottomLeft };
-    }
-
-    public override List<InternalWall> GetRequiredInternalConnections()
-    {
-        // 1x1 内部没有缝隙，不需要连通性
-        return new List<InternalWall>();
-    }
-}
-
-// 5.2 标准矩形模块 (支持任意宽高的矩形，支持旋转)
+// 5.1 标准矩形模块 (支持任意宽高的矩形，支持旋转)
 public class RectModuleData : MachineModuleData
 {
     private int _baseWidth;
@@ -147,4 +138,66 @@ public class RectModuleData : MachineModuleData
         }
         return connections;
     }
+}
+
+// 5.2 升级版机器核心 (Machine Core)
+public class MachineCoreData : MachineModuleData
+{
+    // 【双重库存】：用来存放外侧吃进来的原料，以及加工完毕等待吐出的产物
+    public List<ItemData> InputBuffer = new List<ItemData>();
+    public List<ItemData> OutputBuffer = new List<ItemData>();
+    
+    public int MaxBufferSize = 10; 
+    public float ProcessingProgress = 0f;
+
+    public override List<Vector2Int> GetOccupiedLocalCells() => new List<Vector2Int> { LocalBottomLeft }; 
+    public override List<InternalWall> GetRequiredInternalConnections() => new List<InternalWall>();
+}
+
+// 5.3 输入匣 (Input Port)
+public class InputPortData : MachineModuleData
+{
+    // 将模块的四种旋转状态，映射为具体的开口方向
+    public Direction FacingDir
+    {
+        get
+        {
+            switch (Rotation)
+            {
+                case ModuleRotation.R0: return Direction.Up;
+                case ModuleRotation.R90: return Direction.Right;
+                case ModuleRotation.R180: return Direction.Down;
+                case ModuleRotation.R270: return Direction.Left;
+                default: return Direction.Up;
+            }
+        }
+    }
+
+    public override List<Vector2Int> GetOccupiedLocalCells() => new List<Vector2Int> { LocalBottomLeft };
+    public override List<InternalWall> GetRequiredInternalConnections() => new List<InternalWall>();
+}
+
+// 5.4 输出匣 (Output Port)
+public class OutputPortData : MachineModuleData
+{
+    public Direction FacingDir
+    {
+        get
+        {
+            switch (Rotation)
+            {
+                case ModuleRotation.R0: return Direction.Up;
+                case ModuleRotation.R90: return Direction.Right;
+                case ModuleRotation.R180: return Direction.Down;
+                case ModuleRotation.R270: return Direction.Left;
+                default: return Direction.Up;
+            }
+        }
+    }
+
+    // 【白名单路由配置】：未来在 UI 上配置它只允许输出什么物品
+    public List<string> AllowedItems = new List<string>(); 
+
+    public override List<Vector2Int> GetOccupiedLocalCells() => new List<Vector2Int> { LocalBottomLeft };
+    public override List<InternalWall> GetRequiredInternalConnections() => new List<InternalWall>();
 }
