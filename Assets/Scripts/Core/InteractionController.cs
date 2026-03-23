@@ -256,6 +256,9 @@ public class InteractionController : MonoBehaviour
             }
             shell.ModuleVisuals.Clear();
 
+            MachineManager.Instance.AllActiveShells.Remove(shell);
+            //移除机箱在机器管理器里的注册
+
             Debug.Log($"已拆除机器外壳: {shell.ShellID}");
         }
     }
@@ -661,6 +664,9 @@ public class InteractionController : MonoBehaviour
                 
                 // （注意：在实际项目中，你应该把这些生成的视觉对象放在一个统一的父节点下管理，
                 // 或者保存在 Shell 数据结构里，方便未来拆除机箱时一起销毁。）
+
+                // 【新增】：把这个机箱登记到机箱总管里，让它开始 Tick
+                MachineManager.Instance.AllActiveShells.Add(shell);
             }
         }
     }
@@ -732,7 +738,7 @@ public class InteractionController : MonoBehaviour
     #endregion
 
 
-#region 新区域
+#region 新区域1
     // ==========================================
     // 视觉落地：在机箱内生成真实的模块贴图实体
     // ==========================================
@@ -778,6 +784,28 @@ public class InteractionController : MonoBehaviour
             shell.ModuleVisuals.Add(modVisual);
         }
     }
+
+    // ==========================================
+    // 供外部物流系统调用的物品视觉接口
+    // ==========================================
+    public void SpawnItemVisual(ItemData item, Vector2Int gridPos)
+    {
+        Vector2 spawnPos = GridManager.Instance.GridToWorldPosition(gridPos);
+        GameObject itemObj = Instantiate(ItemPrefab, spawnPos, Quaternion.identity);
+        _spawnedItems.Add(item, itemObj);
+    }
+
+    public void DestroyItemVisual(ItemData item)
+    {
+        if (_spawnedItems.TryGetValue(item, out GameObject visualObj))
+        {
+            Destroy(visualObj);
+            _spawnedItems.Remove(item);
+        }
+    }
+
+
+
     #endregion
 
 }

@@ -79,8 +79,8 @@ public class SimulationController : MonoBehaviour
 
     private void MoveItems()
     {
-        // 现在我们只需要遍历“活跃名单”里的物品
-        for (int i = 0; i < ActiveItems.Count; i++)
+        // 【关键修改】：因为物品一旦被吃掉就会从列表中移除，所以必须采用“倒序遍历”，防止索引越界！
+        for (int i = ActiveItems.Count - 1; i >= 0; i--)
         {
             ItemData item = ActiveItems[i];
             GridCell cell = item.CurrentCell;
@@ -96,19 +96,82 @@ public class SimulationController : MonoBehaviour
                 Vector2Int nextPos = GetNextPosition(cell.GridPosition, cell.Belt.Dir);
                 GridCell nextCell = GridManager.Instance.GetGridCell(nextPos);
 
-                if (nextCell != null && nextCell.Belt != null && nextCell.Item == null)
+                if (nextCell != null)
                 {
-                    // 跨格转移
-                    nextCell.Item = item;
-                    cell.Item = null;
-                    
-                    // 【关键新增】：更新物品的 GPS 定位！
-                    item.CurrentCell = nextCell; 
-                    
-                    item.Progress -= 1.0f;
+
+                    // ====================================================
+                    // 🩺 诊断探针开始：打印前方的物理真实情况
+                    // ====================================================
+                    if (nextCell.OccupyingModule != null)
+                    {
+                        Debug.Log($"[诊断] 物品即将撞上: {nextCell.OccupyingModule.GetType().Name}");
+                        if (nextCell.OccupyingModule is InputPortData inputPort)
+                        {
+                            MachineShellData shell = inputPort.ParentShell;
+                            bool hasCore = shell.MainCore != null;
+                            bool isFull = hasCore && (shell.MainCore.InputBuffer.Count >= shell.MainCore.MaxBufferSize);
+                            Debug.Log($"[诊断] 确认是输入匣！当前机箱是否有核心: {hasCore}。 核心是否已满: {isFull}");
+                        }
+                    }
+                    else
+                    {
+                        // 连模块都没检测到
+                        Debug.Log($"[诊断] 前方坐标 {nextPos} 没有检测到任何机器模块！(可能是坐标错位)");
+                    }
+                    // ====================================================
+
+
+
+                    // ====================================================
+                    // 【机器吞噬拦截】：前方有机器模块，且是输入匣！
+                    // ====================================================
+                    if (nextCell.OccupyingModule is InputPortData)
+                    {
+                        // 尝试呼叫中心把物品塞进去
+                        bool ingested = MachineManager.Instance.TryIngestItem(nextCell, item);
+                        if (ingested)
+                        {
+                            // 1. 数据清空：把它从传送带的格子上摘下来
+                            cell.Item = null;
+                            
+                            // 2. 物理除名：从活跃移动名单中剔除（因为是倒序遍历，这里 RemoveAt 是绝对安全的）
+                            ActiveItems.RemoveAt(i);
+
+                            // 3. 视觉销毁：通知 UI 控制器删掉画面上的精灵贴图
+                            InteractionController.Instance.DestroyItemVisual(item); 
+                            
+                            continue; // 成功喂食，立刻跳过当前物品的处理，去处理下一个物品！
+                        }
+                        else
+                        {
+                            // 如果机器没装核心，或者核心库存满了，物品就死死卡在履带尽头排队
+                            item.Progress = 1.0f;
+                            continue;
+                        }
+                    }
+                    // ====================================================
+
+                    // 【原本的正常跨格逻辑】：前方是普通传送带
+                    if (nextCell.Belt != null && nextCell.Item == null)
+                    {
+                        // 跨格转移
+                        nextCell.Item = item;
+                        cell.Item = null;
+                        
+                        // 更新物品的 GPS 定位！
+                        item.CurrentCell = nextCell; 
+                        
+                        item.Progress -= 1.0f;
+                    }
+                    else
+                    {
+                        // 前方有传送带但是堵车了
+                        item.Progress = 1.0f; 
+                    }
                 }
                 else
                 {
+                    // 前方是地图边缘或者虚空
                     item.Progress = 1.0f; 
                 }
             }
