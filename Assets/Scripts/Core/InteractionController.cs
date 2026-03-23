@@ -39,6 +39,10 @@ public class InteractionController : MonoBehaviour
     private Dictionary<Vector2Int, GameObject> _spawnedBelts = new Dictionary<Vector2Int, GameObject>();
     private Dictionary<ItemData, GameObject> _spawnedItems = new Dictionary<ItemData, GameObject>();
 
+    [Header("配置测试")]
+    public ItemDefinition TestSpawnItem; // 测试按 I 键生成的物品 (拖入铁矿)
+    public RecipeDefinition TestRecipe;  // 测试用的核心配方 (拖入熔炼配方)
+
 
 #endregion
 
@@ -129,9 +133,11 @@ public class InteractionController : MonoBehaviour
             case BuildableType.MachineShell_Test: 
                 Debug.Log("UI：机器外壳模式"); 
                 break;
-            case BuildableType.Module_Core_1x1: 
-                SelectModule(new MachineCoreData()); 
-                Debug.Log("UI：1x1模块");
+           case BuildableType.Module_Core_1x1:
+                Debug.Log("UI选中：1x1 机器核心");
+                MachineCoreData newCore = new MachineCoreData();
+                newCore.CurrentRecipe = TestRecipe; // 【关键】：把配方图纸塞进核心的脑袋里！
+                SelectModule(newCore);
                 break;
             case BuildableType.Module_Rect_2x1: 
                 SelectModule(new RectModuleData(2, 1)); 
@@ -296,6 +302,15 @@ public class InteractionController : MonoBehaviour
                     }
 
                     _cursorItemVisual = Instantiate(ItemPrefab);
+
+                    // ==========================================
+                    // 【关键修复 1】：抓取到鼠标上时，赋予真实的贴图！
+                    // ==========================================
+                    SpriteRenderer sr = _cursorItemVisual.GetComponent<SpriteRenderer>();
+                    if (sr != null && _cursorItem.Definition != null)
+                    {
+                        sr.sprite = _cursorItem.Definition.Icon;
+                    }
                 }
             }
             else
@@ -311,6 +326,16 @@ public class InteractionController : MonoBehaviour
 
                     Vector2 spawnPos = GridManager.Instance.GridToWorldPosition(gridPos);
                     GameObject newVisual = Instantiate(ItemPrefab, spawnPos, Quaternion.identity);
+
+                    // ==========================================
+                    // 【关键修复 2】：放回传送带时，赋予真实的贴图！
+                    // ==========================================
+                    SpriteRenderer sr = newVisual.GetComponent<SpriteRenderer>();
+                    if (sr != null && _cursorItem.Definition != null)
+                    {
+                        sr.sprite = _cursorItem.Definition.Icon;
+                    }
+
                     _spawnedItems.Add(_cursorItem, newVisual);
 
                     Destroy(_cursorItemVisual);
@@ -374,21 +399,26 @@ public class InteractionController : MonoBehaviour
         SimulationController.Instance.CurrentSpeed = newSpeed;
     }
 
+    // --- 物品生成逻辑 ---
     private void HandleSpawnItem()
     {
+        if (TestSpawnItem == null) return; // 防呆：没挂载配置就不生成
+
         Vector2Int gridPos = GetMouseGridPosition();
         GridCell cell = GridManager.Instance.GetGridCell(gridPos);
+
         if (cell != null && cell.Belt != null && cell.Item == null)
         {
-            ItemData newItem = new ItemData();
+            // 【改变】：现在生成物品必须传入它是什么东西的定义
+            ItemData newItem = new ItemData(TestSpawnItem); 
             cell.Item = newItem;
             newItem.CurrentCell = cell; 
             SimulationController.Instance.RegisterItem(newItem);
-            Vector2 spawnPos = GridManager.Instance.GridToWorldPosition(gridPos);
-            GameObject itemObj = Instantiate(ItemPrefab, spawnPos, Quaternion.identity);
-            _spawnedItems.Add(newItem, itemObj);
+            
+            SpawnItemVisual(newItem, gridPos); // 直接调用下面的视觉生成
         }
     }
+
     #endregion
 
 #region 机器模块拼装引擎 (上一轮补充的代码)
@@ -665,10 +695,21 @@ public class InteractionController : MonoBehaviour
                 // （注意：在实际项目中，你应该把这些生成的视觉对象放在一个统一的父节点下管理，
                 // 或者保存在 Shell 数据结构里，方便未来拆除机箱时一起销毁。）
 
-                // 【新增】：把这个机箱登记到机箱总管里，让它开始 Tick
-                MachineManager.Instance.AllActiveShells.Add(shell);
+                
+                
             }
         }
+
+        // ==========================================
+        // 2. 【修复】：把注册代码移到循环外面！整个机箱只注册 1 次！
+        // 顺便加上 Contains 检查，防止以后任何误操作导致的重复注册
+        // ==========================================
+        if (!MachineManager.Instance.AllActiveShells.Contains(shell))
+        {
+            MachineManager.Instance.AllActiveShells.Add(shell);
+            Debug.Log($"[系统] 新机箱已注册！当前世界上共有 {MachineManager.Instance.AllActiveShells.Count} 台机器在运转。");
+        }
+
     }
     #endregion
 
@@ -792,6 +833,14 @@ public class InteractionController : MonoBehaviour
     {
         Vector2 spawnPos = GridManager.Instance.GridToWorldPosition(gridPos);
         GameObject itemObj = Instantiate(ItemPrefab, spawnPos, Quaternion.identity);
+        
+        // 【关键体验升级】：将预制体上的精灵替换为你图纸里的专属图标！
+        SpriteRenderer sr = itemObj.GetComponent<SpriteRenderer>();
+        if (sr != null && item.Definition != null)
+        {
+            sr.sprite = item.Definition.Icon;
+        }
+
         _spawnedItems.Add(item, itemObj);
     }
 

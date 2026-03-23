@@ -62,6 +62,13 @@ public class SimulationController : MonoBehaviour
 
         // 2. 处理物品移动
         MoveItems();
+
+        // 3. 【关键新增】：统一泵血！让所有的机器运转起来
+        // 因为 while 循环已经处理了加速，所以每次 Tick 机器都只往前走固定的 TickRate 时间
+        if (MachineManager.Instance != null)
+        {
+            MachineManager.Instance.TickMachines(TickRate);
+        }
     }
 
     private void CheckCycleProgress()

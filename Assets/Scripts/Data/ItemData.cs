@@ -1,10 +1,15 @@
+// 升级版实体物品数据
 public class ItemData
 {
-    public string ItemName = "铁矿石"; // 暂时硬编码为铁矿石
-    
-    // 物品在当前格子里的移动进度 (0.0f 到 1.0f)
-    // 0.0 代表刚进入格子中心，1.0 代表即将离开格子进入下一个格子
-    public float Progress = 0.0f; 
-    // 【新增】：物品的“GPS”，时刻记录自己所在的格子
+    // 【新增】：指向配置表的引用（这个物品到底是个啥？）
+    public ItemDefinition Definition; 
+
     public GridCell CurrentCell;
+    public float Progress;
+
+    // 强制要求：现在凭空生成一个物品，必须告诉系统它是什么！
+    public ItemData(ItemDefinition def)
+    {
+        Definition = def;
+    }
 }

@@ -2769,6 +2769,8 @@ MonoBehaviour:
   InputPortSprite: {fileID: 21300000, guid: ea1d1d6f24e942e40953a87a2bc99e2f, type: 3}
   OutputPortSprite: {fileID: 21300000, guid: 9866e0659d1babc4dbac200fb2544a2f, type: 3}
   DefaultModuleSprite: {fileID: 21300000, guid: 965988f1744510e47bdea4d533be9a26, type: 3}
+  TestSpawnItem: {fileID: 11400000, guid: e4ed7a7dcc3acb54f9c36b5b3288a7da, type: 2}
+  TestRecipe: {fileID: 11400000, guid: d8cf84cc626c66540884a8e9a2ea67c4, type: 2}
 --- !u!114 &1575124057
 MonoBehaviour:
   m_ObjectHideFlags: 0

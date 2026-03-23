@@ -176,15 +176,9 @@ public class MachineManager : MonoBehaviour
     // ==========================================
     // 核心加工与输出循环 (Tick)
     // ==========================================
-    private void Update()
+    public void TickMachines(float tickDelta)
     {
-        // 如果游戏暂停，机器停止工作
-        if (SimulationController.Instance.CurrentSpeed == TimeSpeed.Paused) return;
-
-        // 获取当前时间流速带来的进度加成
-        float speedMultiplier = SimulationController.Instance.CurrentSpeed == TimeSpeed.Normal ? 1f :
-                                (SimulationController.Instance.CurrentSpeed == TimeSpeed.Fast ? 2f : 5f);
-        float tickDelta = Time.deltaTime * speedMultiplier;
+        
 
         foreach (MachineShellData shell in AllActiveShells)
         {
@@ -193,20 +187,38 @@ public class MachineManager : MonoBehaviour
             MachineCoreData core = shell.MainCore;
 
             // ------------------------------------
-            // 阶段 1：加工逻辑 (肚子有货，且产物区没满)
+            // 阶段 1：真正的配方加工引擎
             // ------------------------------------
-            if (core.InputBuffer.Count > 0 && core.OutputBuffer.Count < core.MaxBufferSize)
+            if (core.CurrentRecipe != null)
             {
-                core.ProcessingProgress += tickDelta; // 推进进度条
-                
-                if (core.ProcessingProgress >= 1.0f) // 假设加工需要 1 秒完成 1 个
+                // 1. 校验：肚子里的原料够不够？产物区还有没有空位？
+                if (HasEnoughInputs(core, core.CurrentRecipe) && core.OutputBuffer.Count < core.MaxBufferSize)
                 {
-                    // 制造完成：吃掉 1 个原料，凭空生成 1 个新产物
-                    core.InputBuffer.RemoveAt(0);
-                    core.OutputBuffer.Add(new ItemData()); // 注意：目前生成的是白板测试物品
-                    core.ProcessingProgress = 0f;
+                    // 【新增】：照妖镜！把读到的目标时间打印出来
+                    //  Debug.Log($"[加工监视] 开始运转！当前进度: {core.ProcessingProgress}, 从图纸读到的目标耗时: {core.CurrentRecipe.ProcessingTime}");
                     
-                    Debug.Log($"[{shell.ShellID}] 加工完成！目前等待吐出的产物数: {core.OutputBuffer.Count}");
+                    // 【关键】：进度条每次增加的不是 1，而是 0.05 秒！
+                    core.ProcessingProgress += tickDelta;
+                    
+                    Debug.Log($"[时间侦探] 机器收到 Tick! 增加的秒数: {tickDelta}, 当前总进度: {core.ProcessingProgress}, 当前帧率倍速: {(int)SimulationController.Instance.CurrentSpeed}");
+                    
+                    // 2. 进度条满了，也就是度过了配方规定的耗时
+                    if (core.ProcessingProgress >= core.CurrentRecipe.ProcessingTime) 
+                    {
+                        // 扣除配方所需求的原料
+                        ConsumeInputs(core, core.CurrentRecipe);
+                        
+                        // 凭空生成配方所规定的产物
+                        ProduceOutputs(core, core.CurrentRecipe);
+                        
+                        core.ProcessingProgress = 0f; // 进度归零，准备下一轮
+                        Debug.Log($"[{shell.ShellID}] 按照配方【{core.CurrentRecipe.DisplayName}】加工完成！");
+                    }
+                }
+                else
+                {
+                    // 原料不足或产物堆积，进度必须暂停或清零
+                    core.ProcessingProgress = 0f; 
                 }
             }
 
@@ -262,5 +274,55 @@ public class MachineManager : MonoBehaviour
         }
     }
 
+    // ==========================================
+    // 配方引擎辅助方法
+    // ==========================================
+
+    // 检查原料是否满足配方需求
+    private bool HasEnoughInputs(MachineCoreData core, RecipeDefinition recipe)
+    {
+        foreach (var req in recipe.Inputs)
+        {
+            int count = 0;
+            // 遍历核心肚子里所有的物品，数一数对应类型的有几个
+            foreach (var item in core.InputBuffer)
+            {
+                if (item.Definition == req.Item) count++;
+            }
+            if (count < req.Amount) return false; // 只要有一种原料数量不够，直接返回 false
+        }
+        return true;
+    }
+
+    // 严格按照配方扣除原料
+    private void ConsumeInputs(MachineCoreData core, RecipeDefinition recipe)
+    {
+        foreach (var req in recipe.Inputs)
+        {
+            int removedCount = 0;
+            // 倒序遍历安全删除
+            for (int i = core.InputBuffer.Count - 1; i >= 0; i--)
+            {
+                if (core.InputBuffer[i].Definition == req.Item)
+                {
+                    core.InputBuffer.RemoveAt(i);
+                    removedCount++;
+                    if (removedCount == req.Amount) break; // 扣够了就停止
+                }
+            }
+        }
+    }
+
+    // 严格按照配方生成产物
+    private void ProduceOutputs(MachineCoreData core, RecipeDefinition recipe)
+    {
+        foreach (var outDef in recipe.Outputs)
+        {
+            for (int i = 0; i < outDef.Amount; i++)
+            {
+                core.OutputBuffer.Add(new ItemData(outDef.Item));
+            }
+        }
+    }
 
 }

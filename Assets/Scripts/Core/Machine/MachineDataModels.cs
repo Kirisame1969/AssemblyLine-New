@@ -143,6 +143,8 @@ public class RectModuleData : MachineModuleData
 // 5.2 升级版机器核心 (Machine Core)
 public class MachineCoreData : MachineModuleData
 {
+    // 【新增】：核心当前正在执行的配方图纸
+    public RecipeDefinition CurrentRecipe;
     // 【双重库存】：用来存放外侧吃进来的原料，以及加工完毕等待吐出的产物
     public List<ItemData> InputBuffer = new List<ItemData>();
     public List<ItemData> OutputBuffer = new List<ItemData>();
