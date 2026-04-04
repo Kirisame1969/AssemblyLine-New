@@ -3,15 +3,17 @@ using UnityEngine;
 public class CameraController : MonoBehaviour
 {
     [Header("摄像机缩放设置")]
+    // 已根据 image_1.png 同步
     public float zoomSpeed = 5f;
     public float minZoom = 3f;
     public float maxZoom = 15f;
 
-    [Header("地图边界设置 (在Inspector中填入你的地图大小)")]
-    public float mapMinX = -20f; // 地图最左边的X坐标
-    public float mapMaxX = 20f;  // 地图最右边的X坐标
-    public float mapMinY = -20f; // 地图最下方的Y坐标
-    public float mapMaxY = 20f;  // 地图最上方的Y坐标
+    [Header("地图边界设置")]
+    // 已根据 image_1.png 同步
+    public float mapMinX = -1f;   // 截图显示为 -1
+    public float mapMaxX = 138f;  // 截图显示为 138
+    public float mapMinY = -1f;   // 截图显示为 -1
+    public float mapMaxY = 103f;  // 截图显示为 103
 
     private Camera cam;
     private Vector3 dragOrigin;
@@ -19,19 +21,35 @@ public class CameraController : MonoBehaviour
     void Start()
     {
         cam = GetComponent<Camera>();
+
+        // 核心修改：游戏开始时聚焦游戏中心
+        FocusOnMapCenter();
     }
 
-    // 注意：处理摄像机的代码，建议放在 LateUpdate 中。
-    // 这样能确保在所有游戏逻辑（如玩家移动、机器刷新）执行完毕后，摄像机再进行跟随或限制，防止画面抖动。
     void LateUpdate()
     {
-        // 1. 处理鼠标中键拖拽
+        // 1. 处理鼠标中键拖拽 (保持)
         HandlePan();
 
-        // 2. 处理滚轮缩放
-        HandleZoom();
+        // 2. 处理滚轮缩放 (保持：以鼠标为中心缩放)
+        HandleZoomToMouse();
 
-        // 3. 将摄像机限制在边界内 (必须放在移动和缩放之后)
+        // 3. 将摄像机限制在边界内
+        ClampCamera();
+    }
+
+    // 新增方法：用于在游戏开始时聚焦地图中心
+    private void FocusOnMapCenter()
+    {
+        // 步骤 A: 计算地图的几何中心
+        float centerX = (mapMinX + mapMaxX) / 2f;
+        float centerY = (mapMinY + mapMaxY) / 2f;
+
+        // 步骤 B: 将摄像机直接移动到中心点 (保留 z 轴)
+        transform.position = new Vector3(centerX, centerY, transform.position.z);
+
+        // 步骤 C: 即使在 Start 中设置了位置，也需要调用一次 ClampCamera()。
+        // 这样可以确保如果摄像机初始视口（Zoom）加上地图中心位置超出了边界（例如地图特别小），也能在游戏第一帧前被正确修正。
         ClampCamera();
     }
 
@@ -50,43 +68,55 @@ public class CameraController : MonoBehaviour
         }
     }
 
-    private void HandleZoom()
+    private void HandleZoomToMouse()
     {
         float scrollInput = Input.GetAxis("Mouse ScrollWheel");
 
         if (scrollInput != 0)
         {
-            cam.orthographicSize -= scrollInput * zoomSpeed;
-            cam.orthographicSize = Mathf.Clamp(cam.orthographicSize, minZoom, maxZoom);
+            Vector3 mouseWorldPosBefore = cam.ScreenToWorldPoint(Input.mousePosition);
+
+            float newSize = cam.orthographicSize - scrollInput * zoomSpeed;
+            cam.orthographicSize = Mathf.Clamp(newSize, minZoom, maxZoom);
+
+            Vector3 mouseWorldPosAfter = cam.ScreenToWorldPoint(Input.mousePosition);
+
+            Vector3 offset = mouseWorldPosBefore - mouseWorldPosAfter;
+            transform.position += offset;
         }
     }
 
-    // 核心边界限制逻辑
+    // 核心边界限制逻辑 (保持，优化了健壮性)
     private void ClampCamera()
     {
-        // 步骤 A: 计算当前摄像机能看到的一半高度和一半宽度
-        // orthographicSize 本身就是摄像机高度的一半
         float camHalfHeight = cam.orthographicSize;
-        // 高度乘以屏幕宽高比，得出宽度的一半
         float camHalfWidth = cam.orthographicSize * cam.aspect;
 
-        // 步骤 B: 计算摄像机中心点允许移动的最小和最大范围
-        // 地图最左边 加上 摄像机一半宽度，就是摄像机中心点能到达的最左侧
-        float limitMinX = mapMinX + camHalfWidth;
-        float limitMaxX = mapMaxX - camHalfWidth;
-        float limitMinY = mapMinY + camHalfHeight;
-        float limitMaxY = mapMaxY - camHalfHeight;
+        float mapWidth = mapMaxX - mapMinX;
+        float mapHeight = mapMaxY - mapMinY;
 
-        // 特殊情况处理：如果地图太小，甚至比你当前缩放的画面还要小，就把摄像机强制固定在地图中心
-        if (limitMinX > limitMaxX) limitMinX = limitMaxX = (mapMinX + mapMaxX) / 2f;
-        if (limitMinY > limitMaxY) limitMinY = limitMaxY = (mapMinY + mapMaxY) / 2f;
-
-        // 步骤 C: 获取当前位置，并使用 Mathf.Clamp 强制把坐标限制在这个范围内
         Vector3 clampedPosition = transform.position;
-        clampedPosition.x = Mathf.Clamp(clampedPosition.x, limitMinX, limitMaxX);
-        clampedPosition.y = Mathf.Clamp(clampedPosition.y, limitMinY, limitMaxY);
 
-        // 将限制后的坐标重新赋值给摄像机
+        // 处理 X 轴限制：如果地图比屏幕还小，强制居中
+        if (mapWidth < camHalfWidth * 2)
+        {
+            clampedPosition.x = (mapMinX + mapMaxX) / 2f;
+        }
+        else
+        {
+            clampedPosition.x = Mathf.Clamp(clampedPosition.x, mapMinX + camHalfWidth, mapMaxX - camHalfWidth);
+        }
+
+        // 处理 Y 轴限制
+        if (mapHeight < camHalfHeight * 2)
+        {
+            clampedPosition.y = (mapMinY + mapMaxY) / 2f;
+        }
+        else
+        {
+            clampedPosition.y = Mathf.Clamp(clampedPosition.y, mapMinY + camHalfHeight, mapMaxY - camHalfHeight);
+        }
+
         transform.position = clampedPosition;
     }
 }
