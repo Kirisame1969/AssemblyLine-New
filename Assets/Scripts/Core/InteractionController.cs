@@ -1,8 +1,3 @@
-
-//---------------------------------------
-
-
-
 using UnityEngine;
 using UnityEngine.EventSystems;
 using System.Collections.Generic;
@@ -55,6 +50,7 @@ public class InteractionController : MonoBehaviour
 #region 总控循环 (Update)
     private void Update()
     {
+        
         // 1. 全局拦截：防 UI 穿透
         if (EventSystem.current.IsPointerOverGameObject() && Input.GetMouseButtonDown(0)) return;
 
@@ -567,6 +563,14 @@ public class InteractionController : MonoBehaviour
                 // 如果该位置超出了世界地图，或者已经有了别的机箱/传送带，则不允许放置
                 if (cell == null || cell.ShellRegion != null || cell.Belt != null)
                 {
+                    // ====== 照妖镜代码开始 ======
+                    bool isOutOfBounds = (cell == null);
+                    bool hasMachine = (cell != null && cell.ShellRegion != null);
+                    bool hasBelt = (cell != null && cell.Belt != null);
+
+                    Debug.Log($"❌ 阻挡点分析 -> 鼠标点算出的网格坐标: {checkPos} | 是越界(null)吗: {isOutOfBounds} | 有机器: {hasMachine} | 有传送带: {hasBelt}");
+                    // ====== 照妖镜代码结束 ======
+
                     canPlaceShell = false;
                     break;
                 }
