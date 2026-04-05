@@ -51,6 +51,7 @@ public class InteractionController : MonoBehaviour
     [Header("配置测试")]
     public ItemDefinition TestSpawnItem; // 测试按 I 键生成的物品 (拖入铁矿)
     public RecipeDefinition TestRecipe;  // 测试用的核心配方 (拖入熔炼配方)
+    public MachineShellProfile TestShellProfile;    //测试机器外壳
 
 
 #endregion
@@ -576,17 +577,22 @@ public class InteractionController : MonoBehaviour
     // ==========================================
     private void HandleShellPlacement()
     {
-        // 假设我们的测试机箱是 3x4 大小
-        int shellWidth = 3;
-        int shellHeight = 4;
+        // 1. 【最关键的防呆拦截】：如果你没有在 Inspector 面板里拖入图纸，直接拦截！
+        // 连绿色的预览框都不会显示，并且控制台会告诉你原因，彻底杜绝报错！
+        if (TestShellProfile == null)
+        {
+            Debug.LogWarning("【严重警告】你忘记在 InteractionController 面板的 TestShellProfile 槽位拖入图纸了！");
+            return; 
+        }
 
-        // 1. 获取鼠标在世界空间的网格坐标 (作为机箱的左下角原点)
-        // 【修复】：统一使用你的网格获取方法，废弃 Mathf.RoundToInt
+        // 2. 彻底抛弃硬编码，直接从你配置的图纸读取尺寸
+        int shellWidth = TestShellProfile.LogicWidth;
+        int shellHeight = TestShellProfile.LogicHeight;
+
         Vector2Int worldOrigin = GetMouseGridPosition();
-        
         bool canPlaceShell = true;
 
-        // 2. 探查大世界网格：确保这 3x4 的区域是完全空旷的
+        // 3. 探查大世界网格：确保这片区域是完全空旷的
         for (int x = 0; x < shellWidth; x++)
         {
             for (int y = 0; y < shellHeight; y++)
@@ -594,7 +600,6 @@ public class InteractionController : MonoBehaviour
                 Vector2Int checkPos = new Vector2Int(worldOrigin.x + x, worldOrigin.y + y);
                 GridCell cell = GridManager.Instance.GetGridCell(checkPos);
 
-                // 如果该位置超出了世界地图，或者已经有了别的机箱/传送带，则不允许放置
                 if (cell == null || cell.ShellRegion != null || cell.Belt != null)
                 {
                     canPlaceShell = false;
@@ -603,31 +608,48 @@ public class InteractionController : MonoBehaviour
             }
         }
 
-        // 3. 绘制机箱的红绿灯预览 (复用 _previewVisuals)
+        // 4. 绘制机箱的红绿灯预览
         UpdateShellPreviewVisuals(worldOrigin, shellWidth, shellHeight, canPlaceShell);
 
-        // 4. 执行放置 (左键点击)
+        // 5. 执行放置 (左键点击)
         if (Input.GetMouseButtonDown(0))
         {
             if (canPlaceShell)
             {
-                // 创建真实的机壳数据
                 RectInt bounds = new RectInt(worldOrigin.x, worldOrigin.y, shellWidth, shellHeight);
-                MachineShellData newShell = new MachineShellData(bounds);
+                
+                // 实例化真实数据（传入你配置好的图纸）
+                MachineShellData newShell = new MachineShellData(TestShellProfile, bounds);
 
-                // 【硬编码加入我们之前设计的测试障碍】
-                // 加入横向隔断墙
-                newShell.PartitionWalls.Add(new InternalWall(new Vector2Int(0, 1), new Vector2Int(0, 2)));
-                newShell.PartitionWalls.Add(new InternalWall(new Vector2Int(1, 1), new Vector2Int(1, 2)));
-                // 加入右上角的绝对死区
-                newShell.DeadCells.Add(new Vector2Int(2, 3));
+                // 安全读取图纸中的物理限制配置
+                newShell.DeadCells = TestShellProfile.DeadCells != null 
+                    ? new HashSet<Vector2Int>(TestShellProfile.DeadCells) 
+                    : new HashSet<Vector2Int>();
 
-                // 正式将机壳注册到大世界网格中，并生成实体的底板视觉效果
+                newShell.PartitionWalls = TestShellProfile.PartitionWalls != null 
+                    ? new HashSet<InternalWall>(TestShellProfile.PartitionWalls) 
+                    : new HashSet<InternalWall>();
+
+                // ====================================================
+                // 【终极防呆补丁】：强制初始化内部容器，防止底层漏写导致 NRE
+                // ====================================================
+                if (newShell.FloorVisuals == null) newShell.FloorVisuals = new List<GameObject>();
+                if (newShell.Modules == null) newShell.Modules = new List<MachineModuleData>();
+                if (newShell.ModuleVisuals == null) newShell.ModuleVisuals = new List<GameObject>();
+                if (newShell.InputPorts == null) newShell.InputPorts = new List<InputPortData>();
+                if (newShell.OutputPorts == null) newShell.OutputPorts = new List<OutputPortData>();
+                
+                if (MachineManager.Instance != null && MachineManager.Instance.AllActiveShells == null)
+                {
+                    MachineManager.Instance.AllActiveShells = new List<MachineShellData>();
+                }
+                // ====================================================
+
+                // 正式将机壳注册到大世界网格中
                 PlaceShellInWorld(newShell);
                 
-                // 放置完毕，清空双手
                 ResetBuildState();
-                Debug.Log($"✅ 成功放置了测试机箱！位置: {worldOrigin}");
+                Debug.Log($"✅ 成功按照图纸【{TestShellProfile.DisplayName}】放置了机壳！位置: {worldOrigin}");
             }
             else
             {
@@ -842,6 +864,28 @@ public class InteractionController : MonoBehaviour
             }
 
             shell.ModuleVisuals.Add(modVisual);
+        }
+    }
+
+    // ==========================================
+    // 【Phase 4 新增】：刷新大世界机箱端口的视觉表现
+    // 供 UI 面板放置/拆除模块后调用
+    // ==========================================
+    public void RefreshPortOverlayVisuals(MachineShellData shell)
+    {
+        if (shell == null) return;
+
+        // 1. 清理该机箱旧的大世界模块视觉贴图
+        foreach (var visual in shell.ModuleVisuals)
+        {
+            if (visual != null) Destroy(visual);
+        }
+        shell.ModuleVisuals.Clear();
+
+        // 2. 遍历当前机箱底层真实的数据，重新生成 I/O 匣子的印记
+        foreach (var module in shell.Modules)
+        {
+            SpawnPortOverlayVisual(shell, module);
         }
     }
 

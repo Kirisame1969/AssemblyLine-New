@@ -1,243 +1,385 @@
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
-using UnityEngine.EventSystems;
+using System.Collections.Generic;
 
 public class MachineGUIController : MonoBehaviour
 {
     public static MachineGUIController Instance { get; private set; }
 
-    [Header("UI 容器引用")]
-    public GameObject PanelRoot; // 整个面板的根节点（用于控制显示/隐藏）
-    public RectTransform GridContainer; // 承载所有格子和模块的 UI 父节点
+    [Header("UI 容器与预制体")]
+    public GameObject PanelRoot;          // 整个机器面板的根节点（用于控制显隐）
+    public RectTransform GridContainer;   // 承载所有 UICell 的父节点（缩放引擎的作用对象）
+    public GameObject UICellPrefab;       // 上面写好的 UICell 预制体
 
-    [Header("UI 渲染配置")]
-    public float CellSize = 64f; // UI面板中每个格子的像素边长
+    [Header("视图配置")]
+    public float BaseCellSize = 64f;      // 基础格子的像素大小 (如 64x64)
+    public Vector2 ViewportSize = new Vector2(600, 600); // UI 视口的最大可用大小（用于缩放计算）
 
-    [Header("UI 预制体/贴图配置")]
-    // 这里未来会拖入你做好的 UI 预制体或贴图
-    public GameObject UICellPrefab;       // 普通空白格子背景
-    public GameObject UIDeadCellPrefab;   // 死区格子背景 (比如黑色打叉)
-    public GameObject UIModulePrefab;     // 模块生成的UI图标
-    public GameObject UIPreviewPrefab;    // 悬浮时的红绿预览块
+    private MachineShellData _currentShell; // 当前正在查看的底层机箱数据
+    private List<GameObject> _spawnedCells = new List<GameObject>(); // 已生成的 UI 格子缓存
 
-    // --- 内部数据缓存 ---
-    private MachineShellData _currentShell;
-    private MachineModuleData _previewModule;
-    private List<GameObject> _spawnedUIVisuals = new List<GameObject>(); // 已生成的UI元素(用于刷新时清理)
-    private List<GameObject> _previewUIVisuals = new List<GameObject>(); // 悬浮预览的UI元素
+    [Header("交互测试配置 (按T键获取)")]
+    public ModuleDefinition TestModuleDef; // 【新增】：请在 Inspector 拖入一个模块图纸作为测试
+
+    // 【新增】：字典缓存，方便通过逻辑坐标快速找到对应的 UI 实体变颜色
+    private Dictionary<Vector2Int, UICell> _cellDict = new Dictionary<Vector2Int, UICell>(); 
+    private Dictionary<MachineModuleData, GameObject> _moduleUIDict = new Dictionary<MachineModuleData, GameObject>();  // 存放生成的模块贴图
+    
+    // 【新增】：拖拽状态机
+    private ModuleDefinition _selectedModuleDef; 
+    private MachineModuleData _previewModuleData; // 用于底层校验的临时数据替身
+    private Vector2Int _currentHoverPos = new Vector2Int(-1, -1);
+
 
     private void Awake()
     {
         if (Instance == null) Instance = this;
         else Destroy(gameObject);
 
-        // 默认隐藏面板
-        ClosePanel();
+        // 游戏开始时隐藏面板
+        if (PanelRoot != null) PanelRoot.SetActive(false);
     }
 
     // ==========================================
-    // 1. 面板开关与数据注入
+    // 外部入口：打开面板并绑定数据
     // ==========================================
-    public void OpenPanel(MachineShellData shellData)
+    public void OpenPanel(MachineShellData shell)
     {
-        _currentShell = shellData;
+        _currentShell = shell;
         PanelRoot.SetActive(true);
 
-        // 清空手里可能拿着的预览模块
-        _previewModule = null;
+        // 暂停游戏大世界时间 (按需)
+        SimulationController.Instance.CurrentSpeed = TimeSpeed.Paused;
 
-        // 根据机箱尺寸动态调整 GridContainer 的大小
-        GridContainer.sizeDelta = new Vector2(shellData.Bounds.width * CellSize, shellData.Bounds.height * CellSize);
+        GenerateGrid();
 
-        RefreshUI();
+        // 【新增】：打开面板时，把机器里已经存在的模块渲染出来
+        foreach (var module in shell.Modules)
+        {
+            SpawnUIModuleVisual(module);
+        }
     }
 
+    // 关闭面板
     public void ClosePanel()
     {
-        _currentShell = null;
-        _previewModule = null;
         PanelRoot.SetActive(false);
-        ClearPreviews();
-    }
+        _currentShell = null;
 
-    // 供 UI 侧边栏按钮点击调用（例如点击了“输入匣”按钮）
-    public void SelectModuleForPlacement(MachineModuleData module)
-    {
-        _previewModule = module;
+        // 【新增】：关闭面板时，清空手里抓着的模块
+        _selectedModuleDef = null;
+        _previewModuleData = null;
+        SimulationController.Instance.CurrentSpeed = TimeSpeed.Normal; // 恢复时间
     }
 
     // ==========================================
-    // 2. 核心 Update：处理 UI 上的悬浮与点击
+    // 核心引擎：生成网格并执行自适应缩放
+    // ==========================================
+    private void GenerateGrid()
+    {
+        // 1. 清理所有旧表现
+        foreach (var cell in _spawnedCells) Destroy(cell);
+        _spawnedCells.Clear();
+        
+        // 【极其关键】：确保清空字典，为重新注册做准备
+        _cellDict.Clear(); 
+
+        foreach (var kvp in _moduleUIDict) Destroy(kvp.Value);
+        _moduleUIDict.Clear();
+
+        if (_currentShell == null || _currentShell.Profile == null) return;
+
+        MachineShellProfile profile = _currentShell.Profile;
+
+        float minX = float.MaxValue, minY = float.MaxValue;
+        float maxX = float.MinValue, maxY = float.MinValue;
+        bool useFallback = profile.VisualConfigs == null || profile.VisualConfigs.Count == 0;
+
+        // 2. 读取配置并生成格子
+        for (int x = 0; x < profile.LogicWidth; x++)
+        {
+            for (int y = 0; y < profile.LogicHeight; y++)
+            {
+                Vector2Int logicPos = new Vector2Int(x, y);
+                CellVisualConfig visualConfig = new CellVisualConfig();
+                
+                if (useFallback)
+                {
+                    visualConfig.LogicalPos = logicPos;
+                    visualConfig.VisualOffset = new Vector2(x * BaseCellSize, y * BaseCellSize);
+                }
+                else
+                {
+                    bool found = false;
+                    foreach (var cfg in profile.VisualConfigs)
+                    {
+                        if (cfg.LogicalPos == logicPos)
+                        {
+                            visualConfig = cfg;
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found) continue; 
+                }
+
+                GameObject cellObj = Instantiate(UICellPrefab, GridContainer);
+                RectTransform rt = cellObj.GetComponent<RectTransform>();
+                rt.anchoredPosition = visualConfig.VisualOffset;
+                rt.sizeDelta = new Vector2(BaseCellSize, BaseCellSize);
+
+                UICell cellScript = cellObj.GetComponent<UICell>();
+                if (cellScript != null)
+                {
+                    bool isDead = profile.DeadCells.Contains(logicPos);
+                    cellScript.Init(logicPos, visualConfig, isDead);
+                    
+                    // 【修复 2】：这里一定要将生成的 UI 格子注册进字典！否则 RefreshPreview 找不到格子！
+                    _cellDict[logicPos] = cellScript; 
+                }
+
+                _spawnedCells.Add(cellObj);
+
+                minX = Mathf.Min(minX, visualConfig.VisualOffset.x);
+                minY = Mathf.Min(minY, visualConfig.VisualOffset.y);
+                maxX = Mathf.Max(maxX, visualConfig.VisualOffset.x + BaseCellSize);
+                maxY = Mathf.Max(maxY, visualConfig.VisualOffset.y + BaseCellSize);
+            }
+        }
+
+        // 3. 缩放引擎
+        if (_spawnedCells.Count > 0)
+        {
+            float contentWidth = maxX - minX;
+            float contentHeight = maxY - minY;
+
+            float scaleX = ViewportSize.x / contentWidth;
+            float scaleY = ViewportSize.y / contentHeight;
+            float finalScale = Mathf.Min(scaleX, scaleY) * 0.9f;
+
+            finalScale = Mathf.Min(finalScale, 1.5f);
+
+            GridContainer.localScale = new Vector3(finalScale, finalScale, 1f);
+
+            float centerX = minX + contentWidth / 2f;
+            float centerY = minY + contentHeight / 2f;
+            GridContainer.anchoredPosition = new Vector2(-centerX * finalScale, -centerY * finalScale);
+        }
+    }
+
+    // ==========================================
+    // 交互输入总控 (Update)
     // ==========================================
     private void Update()
     {
-        if (_currentShell == null || !PanelRoot.activeInHierarchy) return;
-
-        // 如果按右键，清空手里的图纸，或者关闭面板
-        if (Input.GetMouseButtonDown(1))
+        // 【修复 1：增加退出 UI 的快捷键】
+        if (Input.GetKeyDown(KeyCode.Escape))
         {
-            if (_previewModule != null) _previewModule = null;
-            else ClosePanel();
-            ClearPreviews();
+            ClosePanel();
             return;
         }
 
-        // 如果手里拿着模块，处理悬浮预览与放置
-        if (_previewModule != null)
-        {
-            HandlePreviewAndPlacement();
-            
-            // 按 R 键在 UI 里旋转模块
-            if (Input.GetKeyDown(KeyCode.R))
-            {
-                _previewModule.Rotation = (ModuleRotation)(((int)_previewModule.Rotation + 1) % 4);
-            }
-        }
-        else
-        {
-            ClearPreviews();
-        }
-    }
-
-    // ==========================================
-    // 3. 坐标转换与 MVC 标准调用
-    // ==========================================
-    private void HandlePreviewAndPlacement()
-    {
-        // 获取鼠标在 GridContainer 内部的 UI 局部坐标
-        RectTransformUtility.ScreenPointToLocalPointInRectangle(
-            GridContainer, Input.mousePosition, null, out Vector2 localMousePos);
-
-        // 将 UI 像素坐标转换为机箱内部的逻辑网格坐标 (0,0 代表左下角)
-        int logicX = Mathf.FloorToInt(localMousePos.x / CellSize);
-        int logicY = Mathf.FloorToInt(localMousePos.y / CellSize);
-        Vector2Int hoveredLocalPos = new Vector2Int(logicX, logicY);
-
-        _previewModule.LocalBottomLeft = hoveredLocalPos;
-
-        // 【MVC 严苛遵守】：绝对不去自己查数据，而是询问 Core 层的主任：能不能放？
-        bool canPlace = MachineManager.Instance.CanPlaceModule(_currentShell, _previewModule);
-
-        // 渲染红绿灯虚影
-        UpdatePreviewVisuals(canPlace);
-
-        // 左键点击放置
-        if (Input.GetMouseButtonDown(0))
-        {
-            if (canPlace)
-            {
-                // 【MVC 严苛遵守】：调用 Core 层写入数据
-                MachineManager.Instance.PlaceModule(_currentShell, _previewModule);
-
-                // 如果是 IO 匣子，回调大世界的 InteractionController 叠加外面那一层边缘贴图
-                InteractionController.Instance.SpawnPortOverlayVisual(_currentShell, _previewModule);
-
-                // 放置成功后，立刻重新读取 Model 数据并刷新 UI 画布
-                RefreshUI();
-
-                // 连续放置逻辑（重新 new 一个同类的模块放手里），这里先简单置空
-                _previewModule = null; 
-                ClearPreviews();
-            }
-            else
-            {
-                Debug.LogWarning("UI 面板：放置失败！违反了五重锁校验。");
-            }
-        }
-    }
-
-    // ==========================================
-    // 4. 视图层渲染逻辑 (View)
-    // ==========================================
-    private void RefreshUI()
-    {
         if (_currentShell == null) return;
 
-        // 清理旧的 UI 元素
-        foreach (var obj in _spawnedUIVisuals) Destroy(obj);
-        _spawnedUIVisuals.Clear();
-
-        // 1. 绘制底板（空白格与死区格）
-        for (int x = 0; x < _currentShell.Bounds.width; x++)
+        // 测试抓取
+        if (Input.GetKeyDown(KeyCode.T) && TestModuleDef != null)
         {
-            for (int y = 0; y < _currentShell.Bounds.height; y++)
+            _selectedModuleDef = TestModuleDef;
+            _previewModuleData = TestModuleDef.CreateRuntimeInstance(); 
+            RefreshPreview();
+        }
+
+        // ===================================================
+        // 状态 A：手里【拿着】模块时的放置逻辑
+        // ===================================================
+        if (_selectedModuleDef != null && _currentHoverPos.x != -1)
+        {
+            if (Input.GetKeyDown(KeyCode.R))
             {
-                Vector2Int pos = new Vector2Int(x, y);
-                bool isDead = _currentShell.DeadCells.Contains(pos);
-                
-                GameObject prefab = isDead ? UIDeadCellPrefab : UICellPrefab;
-                if (prefab != null)
+                _previewModuleData.Rotation = (ModuleRotation)(((int)_previewModuleData.Rotation + 1) % 4);
+                RefreshPreview();
+            }
+
+            if (Input.GetMouseButtonDown(1)) // 右键取消拿取
+            {
+                _selectedModuleDef = null;
+                _previewModuleData = null;
+                RefreshPreview();
+                return;
+            }
+
+            if (Input.GetMouseButtonDown(0)) // 左键放置
+            {
+                if (MachineManager.Instance.CanPlaceModule(_currentShell, _previewModuleData))
                 {
-                    GameObject cellObj = Instantiate(prefab, GridContainer);
-                    RectTransform rt = cellObj.GetComponent<RectTransform>();
+                    MachineModuleData finalModule = _selectedModuleDef.CreateRuntimeInstance();
+                    finalModule.LocalBottomLeft = _currentHoverPos;
+                    finalModule.Rotation = _previewModuleData.Rotation;
+
+                    // 1. Data 层写入
+                    MachineManager.Instance.PlaceModule(_currentShell, finalModule);
                     
-                    // 将逻辑坐标转换为 UI 锚点坐标 (左下角为起点)
-                    rt.anchoredPosition = new Vector2(x * CellSize, y * CellSize);
-                    rt.sizeDelta = new Vector2(CellSize, CellSize);
-                    
-                    _spawnedUIVisuals.Add(cellObj);
+                    // 2. View 层 UI 渲染
+                    SpawnUIModuleVisual(finalModule);
+
+                    // 3. 【Phase 4 追加】：View 层大世界同步！让 I/O 匣子出现在地上
+                    InteractionController.Instance.RefreshPortOverlayVisuals(_currentShell);
+
+                    // 放置完清空双手
+                    _selectedModuleDef = null; 
+                    _previewModuleData = null;
+                    RefreshPreview();
                 }
             }
         }
-
-        // 2. 绘制已放置的模块 (未来可以替换为你设计的精美 UI 图标)
-        foreach (MachineModuleData module in _currentShell.Modules)
+        // ===================================================
+        // 状态 B：手里【空着】时的拆除逻辑 (Phase 4 核心)
+        // ===================================================
+        else if (_selectedModuleDef == null && _currentHoverPos.x != -1)
         {
-            foreach (Vector2Int cellPos in module.GetOccupiedLocalCells())
+            if (Input.GetMouseButtonDown(1)) // 右键拆卸
             {
-                if (UIModulePrefab != null)
+                // 将 UI 的局部坐标转换为大世界的真实网格坐标
+                Vector2Int worldPos = new Vector2Int(_currentShell.Bounds.xMin + _currentHoverPos.x, _currentShell.Bounds.yMin + _currentHoverPos.y);
+                GridCell cell = GridManager.Instance.GetGridCell(worldPos);
+
+                // 探查底层的网格：这个格子上有没有模块？模块属于现在的机箱吗？
+                if (cell != null && cell.OccupyingModule != null && cell.OccupyingModule.ParentShell == _currentShell)
                 {
-                    GameObject modObj = Instantiate(UIModulePrefab, GridContainer);
-                    RectTransform rt = modObj.GetComponent<RectTransform>();
-                    rt.anchoredPosition = new Vector2(cellPos.x * CellSize, cellPos.y * CellSize);
-                    rt.sizeDelta = new Vector2(CellSize, CellSize);
-                    
-                    // TODO: 这里可以根据 module 的具体类型 (Core, InputPort) 赋予不同的 UI 图片
-                    
-                    _spawnedUIVisuals.Add(modObj);
+                    MachineModuleData targetModule = cell.OccupyingModule;
+
+                    // 1. Data 层拆除 (内部会清理大世界占位并重算 Buff)
+                    MachineManager.Instance.RemoveModule(_currentShell, targetModule);
+
+                    // 2. View 层 UI 清理
+                    if (_moduleUIDict.TryGetValue(targetModule, out GameObject uiObj))
+                    {
+                        Destroy(uiObj);
+                        _moduleUIDict.Remove(targetModule);
+                    }
+
+                    // 3. View 层大世界同步清理！把地上的 I/O 匣子抹掉
+                    InteractionController.Instance.RefreshPortOverlayVisuals(_currentShell);
+
+                    Debug.Log($"[GUI] 成功拆除了模块: {targetModule.Definition.DisplayName}");
                 }
             }
         }
-
-        // 3. 绘制隔断墙 (略，未来可以用细长的 Image 挡在格子中间)
     }
 
-    private void UpdatePreviewVisuals(bool canPlace)
+    // ==========================================
+    // 【新增】：悬停状态接收器 (供 UICell 呼叫)
+    // ==========================================
+    public void OnCellHoverEnter(Vector2Int logicPos)
     {
-        List<Vector2Int> occupied = _previewModule.GetOccupiedLocalCells();
-        Color color = canPlace ? new Color(0, 1, 0, 0.5f) : new Color(1, 0, 0, 0.5f);
-
-        if (_previewUIVisuals.Count != occupied.Count)
-        {
-            ClearPreviews();
-            for (int i = 0; i < occupied.Count; i++)
-            {
-                if (UIPreviewPrefab != null)
-                {
-                    GameObject obj = Instantiate(UIPreviewPrefab, GridContainer);
-                    _previewUIVisuals.Add(obj);
-                }
-            }
-        }
-
-        for (int i = 0; i < occupied.Count; i++)
-        {
-            if (i < _previewUIVisuals.Count)
-            {
-                RectTransform rt = _previewUIVisuals[i].GetComponent<RectTransform>();
-                rt.anchoredPosition = new Vector2(occupied[i].x * CellSize, occupied[i].y * CellSize);
-                rt.sizeDelta = new Vector2(CellSize, CellSize);
-                
-                Image img = _previewUIVisuals[i].GetComponent<Image>();
-                if (img != null) img.color = color;
-            }
-        }
+        _currentHoverPos = logicPos;
+        RefreshPreview();
     }
 
-    private void ClearPreviews()
+    public void OnCellHoverExit(Vector2Int logicPos)
     {
-        foreach (var obj in _previewUIVisuals) Destroy(obj);
-        _previewUIVisuals.Clear();
+        if (_currentHoverPos == logicPos)
+        {
+            _currentHoverPos = new Vector2Int(-1, -1);
+            RefreshPreview();
+        }
     }
+
+    // ==========================================
+    // 【新增】：渲染红绿灯悬浮预览
+    // ==========================================
+    private void RefreshPreview()
+    {
+        // 1. 刷白：清除字典中所有格子的颜色残留
+        foreach (var kvp in _cellDict) kvp.Value.ClearHighlight();
+
+        if (_selectedModuleDef == null || _currentShell == null || _currentHoverPos.x == -1) return;
+
+        // 2. 将临时替身的锚点对齐鼠标
+        _previewModuleData.LocalBottomLeft = _currentHoverPos;
+
+        // 3. 计算在当前旋转下，模块占据的局部坐标集
+        List<Vector2Int> occupied = _previewModuleData.GetOccupiedLocalCells();
+        
+        // 4. 呼叫 Data 层进行物理碰撞仲裁
+        bool canPlace = MachineManager.Instance.CanPlaceModule(_currentShell, _previewModuleData);
+        Color tint = canPlace ? new Color(0, 1, 0, 0.5f) : new Color(1, 0, 0, 0.5f); // 绿灯或红灯
+
+        // 5. 染色对应的 UI 格子
+        foreach (Vector2Int pos in occupied)
+        {
+            if (_cellDict.TryGetValue(pos, out UICell cell))
+            {
+                cell.SetHighlight(tint);
+            }
+        }
+    }
+
+    // ==========================================
+    // 渲染：生成实体模块贴图包围盒 (带旋转修复)
+    // ==========================================
+    private void SpawnUIModuleVisual(MachineModuleData module)
+    {
+        List<Vector2Int> occupied = module.GetOccupiedLocalCells();
+        if (occupied.Count == 0 || module.Definition == null) return;
+
+        // 【修复 3-A】：计算模块在未旋转状态下的“基准尺寸”
+        int minBaseX = 0, maxBaseX = 0, minBaseY = 0, maxBaseY = 0;
+        foreach (var pos in module.Definition.Shape.BaseCells)
+        {
+            minBaseX = Mathf.Min(minBaseX, pos.x); maxBaseX = Mathf.Max(maxBaseX, pos.x);
+            minBaseY = Mathf.Min(minBaseY, pos.y); maxBaseY = Mathf.Max(maxBaseY, pos.y);
+        }
+        float baseWidth = (maxBaseX - minBaseX + 1) * BaseCellSize;
+        float baseHeight = (maxBaseY - minBaseY + 1) * BaseCellSize;
+
+        // 计算当前在 UI 上的实际几何中心
+        float minX = float.MaxValue, minY = float.MaxValue;
+        float maxX = float.MinValue, maxY = float.MinValue;
+
+        foreach (Vector2Int pos in occupied)
+        {
+            if (_cellDict.TryGetValue(pos, out UICell cell))
+            {
+                Vector2 center = cell.GetComponent<RectTransform>().anchoredPosition;
+                minX = Mathf.Min(minX, center.x);
+                minY = Mathf.Min(minY, center.y);
+                maxX = Mathf.Max(maxX, center.x);
+                maxY = Mathf.Max(maxY, center.y);
+            }
+        }
+
+        GameObject modObj = new GameObject("UIModule_" + module.Definition.ModuleID);
+        modObj.transform.SetParent(GridContainer, false);
+        modObj.transform.SetAsLastSibling(); 
+
+        Image img = modObj.AddComponent<Image>();
+        img.sprite = module.Definition.Icon; 
+        img.raycastTarget = false; 
+
+        RectTransform rt = modObj.GetComponent<RectTransform>();
+        
+        // 【修复 3-B】：尺寸设为基准尺寸，锚点设为几何中心
+        rt.sizeDelta = new Vector2(baseWidth, baseHeight);
+        rt.anchoredPosition = new Vector2((minX + maxX) / 2f, (minY + maxY) / 2f);
+
+        // 【修复 3-C】：赋予 Z 轴旋转！
+        float angle = 0f;
+        switch (module.Rotation)
+        {
+            case ModuleRotation.R0: angle = 0f; break;
+            case ModuleRotation.R90: angle = -90f; break;
+            case ModuleRotation.R180: angle = 180f; break;
+            case ModuleRotation.R270: angle = 90f; break;
+        }
+        rt.localRotation = Quaternion.Euler(0, 0, angle);
+
+        _moduleUIDict.Add(module, modObj);
+    }
+
+
+
+
+
+
 }

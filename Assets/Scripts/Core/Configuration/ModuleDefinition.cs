@@ -1,11 +1,10 @@
 using UnityEngine;
 using System.Collections.Generic;
 
-// 定义模块的底层业务类型，方便系统知道该实例化哪个 C# 类
 public enum ModuleLogicalType
 {
-    NormalRect, // 普通矩形模块
-    Core,       // 机器核心
+    NormalRect, // 普通异形/矩形模块
+    Core,       // 机器核心 (处理配方)
     InputPort,  // 输入匣
     OutputPort  // 输出匣
 }
@@ -13,33 +12,46 @@ public enum ModuleLogicalType
 [CreateAssetMenu(fileName = "NewModuleDef", menuName = "Factory/Module Definition")]
 public class ModuleDefinition : ScriptableObject
 {
-    [Header("基础信息")]
-    public string ModuleID;             // 唯一ID，如 "module_core_basic"
-    public string DisplayName;          // UI上显示的名称，如 "初级处理核心"
-    public Sprite Icon;                 // UI侧边栏和机器面板里显示的精美贴图
+    [Header("基础视觉信息")]//(View层使用)
+    public string ModuleID;             
+    public string DisplayName;          
+    public Sprite Icon;                 
 
-    [Header("物理属性")]
-    public Vector2Int Size = new Vector2Int(1, 1); // 模块的逻辑宽高尺寸
-    public ModuleLogicalType Type = ModuleLogicalType.NormalRect; // 模块类型
+    [Header("物理与逻辑属性")]//(Data层使用)
+    public ModuleLogicalType Type = ModuleLogicalType.NormalRect; 
+    
+    [Tooltip("定义该模块的形状和初始坐标集")]//（例如L型等）
+    public ModuleShapeData Shape;
+
+    [Tooltip("该模块提供的所有增益特效")]
+    public List<ModuleEffect> Effects = new List<ModuleEffect>();
 
     // ==========================================
-    // 【架构亮点：工厂方法】
-    // View层只认识这个图纸(ScriptableObject)。当玩家从UI拖拽它到机器里松手时，
-    // 调用这个方法，就能安全地生成纯 C# 的底层逻辑数据！
+    // 【工厂方法】：将图纸实例化为运行时的 C# 数据对象
     // ==========================================
     public MachineModuleData CreateRuntimeInstance()
     {
+        MachineModuleData newInstance;
+
         switch (Type)
         {
             case ModuleLogicalType.Core:
-                return new MachineCoreData(); // 实例化核心
+                newInstance = new MachineCoreData(); 
+                break;
             case ModuleLogicalType.InputPort:
-                return new InputPortData();   // 实例化输入匣
+                newInstance = new InputPortData();   
+                break;
             case ModuleLogicalType.OutputPort:
-                return new OutputPortData();  // 实例化输出匣
+                newInstance = new OutputPortData();  
+                break;
             case ModuleLogicalType.NormalRect:
             default:
-                return new RectModuleData(Size.x, Size.y); // 实例化普通多格模块
+                newInstance = new RectModuleData(); // 改为了无参数构造，稍后在数据模型里更新
+                break;
         }
+        
+        // 【关键】：让实例化的模块记住自己的图纸！方便后续读取形状和Buff
+        newInstance.Definition = this; 
+        return newInstance;
     }
 }
