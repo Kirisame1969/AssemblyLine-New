@@ -1,15 +1,19 @@
 using UnityEngine;
 using UnityEngine.UI;
 using System.Collections.Generic;
+// 【新增】：如果未来使用 ScrollRect，需要引入 UI 命名空间
+using UnityEngine.EventSystems;
 
 public class MachineGUIController : MonoBehaviour
 {
     public static MachineGUIController Instance { get; private set; }
 
     [Header("UI 容器与预制体")]
+    public RectTransform GridViewport;    // 【新增】：网格的视口遮罩节点（Step 3 限制拖拽不出界时需要用到它的尺寸）
     public GameObject PanelRoot;          // 整个机器面板的根节点（用于控制显隐）
     public RectTransform GridContainer;   // 承载所有 UICell 的父节点（缩放引擎的作用对象）
     public GameObject UICellPrefab;       // 上面写好的 UICell 预制体
+    public Button CloseButton;// 【新增】：关闭按钮引用
 
     [Header("视图配置")]
     public float BaseCellSize = 64f;      // 基础格子的像素大小 (如 64x64)
@@ -30,6 +34,24 @@ public class MachineGUIController : MonoBehaviour
     private MachineModuleData _previewModuleData; // 用于底层校验的临时数据替身
     private Vector2Int _currentHoverPos = new Vector2Int(-1, -1);
 
+    [Header("Tab 标签页系统 (Phase 5)")]
+    [Tooltip("拖入右侧所有的黄色标签按钮 (挂载了 UITabButton 脚本)")]
+    public UITabButton[] TabButtons; 
+    [Tooltip("拖入与标签对应的页面节点 (第0个是内部空间，第1个是统计页等)")]
+    public GameObject[] TabPages; 
+
+
+    [Header("侧边栏与拖拽系统 (Phase 5)")]
+    public ModuleCatalog CurrentCatalog;      // 填入我们刚写的商品目录
+    public Transform SidebarContent;          // 左侧 ScrollView 里的 Content 节点
+    public GameObject UIModuleEntryPrefab;    // 左侧列表项的预制体
+
+    [Tooltip("跟随鼠标的虚影节点")]
+    public RectTransform DragGhost;           // 虚影的 RectTransform
+    public Image DragGhostImage;              // 虚影的 Image
+
+
+    private int _currentTabIndex = 0; // 当前停留在哪一页
 
     private void Awake()
     {
@@ -38,6 +60,12 @@ public class MachineGUIController : MonoBehaviour
 
         // 游戏开始时隐藏面板
         if (PanelRoot != null) PanelRoot.SetActive(false);
+
+        // 【新增】：代码绑定关闭按钮事件，点 X 即可关闭
+        if (CloseButton != null)
+        {
+            CloseButton.onClick.AddListener(ClosePanel);
+        }
     }
 
     // ==========================================
@@ -47,13 +75,17 @@ public class MachineGUIController : MonoBehaviour
     {
         _currentShell = shell;
         PanelRoot.SetActive(true);
-
         // 暂停游戏大世界时间 (按需)
         SimulationController.Instance.CurrentSpeed = TimeSpeed.Paused;
 
+        // 重置 Tab 为初始状态
+        SwitchTab(0);
         GenerateGrid();
 
-        // 【新增】：打开面板时，把机器里已经存在的模块渲染出来
+        // 【新增】：每次打开面板时，刷新左侧侧边栏
+        GenerateSidebar();
+
+        // 打开面板时，把机器里已经存在的模块渲染出来
         foreach (var module in shell.Modules)
         {
             SpawnUIModuleVisual(module);
@@ -71,6 +103,34 @@ public class MachineGUIController : MonoBehaviour
         _previewModuleData = null;
         SimulationController.Instance.CurrentSpeed = TimeSpeed.Normal; // 恢复时间
     }
+
+    // ==========================================
+    // 【新增】：执行 Tab 切换逻辑
+    // ==========================================
+    public void SwitchTab(int targetIndex)
+    {
+        _currentTabIndex = targetIndex;
+
+        // 1. 刷新所有 Tab 按钮的视觉长度
+        for (int i = 0; i < TabButtons.Length; i++)
+        {
+            if (TabButtons[i] != null)
+            {
+                TabButtons[i].SetSelectedStatus(i == targetIndex);
+            }
+        }
+
+        // 2. 刷新所有页面的显隐状态
+        for (int i = 0; i < TabPages.Length; i++)
+        {
+            if (TabPages[i] != null)
+            {
+                TabPages[i].SetActive(i == targetIndex);
+            }
+        }
+    }
+
+
 
     // ==========================================
     // 核心引擎：生成网格并执行自适应缩放
@@ -167,48 +227,90 @@ public class MachineGUIController : MonoBehaviour
         }
     }
 
+    // ================== [新增生成侧边栏逻辑] ==================
+    private void GenerateSidebar()
+    {
+        // 清理旧的列表项
+        foreach (Transform child in SidebarContent) Destroy(child.gameObject);
+
+        if (CurrentCatalog == null) return;
+
+        // 根据目录生成列表项
+        foreach (var modDef in CurrentCatalog.AvailableModules)
+        {
+            GameObject entryObj = Instantiate(UIModuleEntryPrefab, SidebarContent);
+            UIModuleEntry entryScript = entryObj.GetComponent<UIModuleEntry>();
+            if (entryScript != null)
+            {
+                entryScript.Init(modDef);
+            }
+        }
+    }
+
+    // ================== [新增拾取逻辑] ==================
+    // 供 UIModuleEntry 点击时调用
+    public void PickUpModule(ModuleDefinition targetDef)
+    {
+        _selectedModuleDef = targetDef;
+        _previewModuleData = targetDef.CreateRuntimeInstance();
+        
+        // 激活鼠标跟随的虚影
+        DragGhost.gameObject.SetActive(true);
+        DragGhostImage.sprite = targetDef.Icon;
+        // 恢复初始旋转角度
+        DragGhost.localRotation = Quaternion.identity; 
+
+        RefreshPreview();
+    }
+
+
+    // ================== [新增清空双手辅助方法] ==================
+    private void ClearHands()
+    {
+        _selectedModuleDef = null;
+        _previewModuleData = null;
+        DragGhost.gameObject.SetActive(false);
+        RefreshPreview();
+    }
+
     // ==========================================
     // 交互输入总控 (Update)
     // ==========================================
     private void Update()
     {
-        // 【修复 1：增加退出 UI 的快捷键】
+        if (_currentShell == null) return;
+
         if (Input.GetKeyDown(KeyCode.Escape))
         {
             ClosePanel();
             return;
         }
 
-        if (_currentShell == null) return;
-
-        // 测试抓取
-        if (Input.GetKeyDown(KeyCode.T) && TestModuleDef != null)
+        // 状态 A：手里【拿着】模块
+        if (_selectedModuleDef != null)
         {
-            _selectedModuleDef = TestModuleDef;
-            _previewModuleData = TestModuleDef.CreateRuntimeInstance(); 
-            RefreshPreview();
-        }
+            // 【新增】：让虚影时刻跟随鼠标移动
+            // 适用 Screen Space - Overlay 的 Canvas
+            DragGhost.position = Input.mousePosition;
 
-        // ===================================================
-        // 状态 A：手里【拿着】模块时的放置逻辑
-        // ===================================================
-        if (_selectedModuleDef != null && _currentHoverPos.x != -1)
-        {
+            // 按 R 旋转
             if (Input.GetKeyDown(KeyCode.R))
             {
                 _previewModuleData.Rotation = (ModuleRotation)(((int)_previewModuleData.Rotation + 1) % 4);
+                // 虚影也跟着转
+                DragGhost.localRotation *= Quaternion.Euler(0, 0, -90f); 
                 RefreshPreview();
             }
 
-            if (Input.GetMouseButtonDown(1)) // 右键取消拿取
+            // 右键取消拾取
+            if (Input.GetMouseButtonDown(1))
             {
-                _selectedModuleDef = null;
-                _previewModuleData = null;
-                RefreshPreview();
+                ClearHands(); // 【修改】：封装成一个小方法
                 return;
             }
 
-            if (Input.GetMouseButtonDown(0)) // 左键放置
+            // 左键放置 (前提是鼠标正在网格里，且有合法坐标)
+            if (Input.GetMouseButtonDown(0) && _currentHoverPos.x != -1)
             {
                 if (MachineManager.Instance.CanPlaceModule(_currentShell, _previewModuleData))
                 {
@@ -216,19 +318,13 @@ public class MachineGUIController : MonoBehaviour
                     finalModule.LocalBottomLeft = _currentHoverPos;
                     finalModule.Rotation = _previewModuleData.Rotation;
 
-                    // 1. Data 层写入
                     MachineManager.Instance.PlaceModule(_currentShell, finalModule);
-                    
-                    // 2. View 层 UI 渲染
                     SpawnUIModuleVisual(finalModule);
-
-                    // 3. 【Phase 4 追加】：View 层大世界同步！让 I/O 匣子出现在地上
                     InteractionController.Instance.RefreshPortOverlayVisuals(_currentShell);
 
-                    // 放置完清空双手
-                    _selectedModuleDef = null; 
-                    _previewModuleData = null;
-                    RefreshPreview();
+                    // 放完后你可以选择清空双手，或者像 Factorio 一样保持拿取状态继续连放
+                    // 如果你想连放，就把下面这行注释掉。目前我们设定为放一次就清空双手：
+                    ClearHands(); 
                 }
             }
         }
