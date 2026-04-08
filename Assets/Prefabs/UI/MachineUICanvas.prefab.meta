@@ -1,12 +1,6 @@
 fileFormatVersion: 2
-<<<<<<<< HEAD:Assets/AddressableAssetsData.meta
-guid: 26721a58477bf4a4aaf5869f983bd68d
-folderAsset: yes
-DefaultImporter:
-========
-guid: ed519e1d4c1abb8479d0dbe95fb90d26
+guid: 44948aa30303b804ca7ae1dd1124c5ca
 PrefabImporter:
->>>>>>>> UI未更新版本:Assets/Prefabs/UI/MachineUICanvas.prefab.meta
   externalObjects: {}
   userData: 
   assetBundleName: 
