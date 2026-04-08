@@ -66,8 +66,13 @@ public class InteractionController : MonoBehaviour
     private void Update()
     {
         // 1. 全局拦截：防 UI 穿透
-        if (EventSystem.current.IsPointerOverGameObject() && Input.GetMouseButtonDown(0)) return;
-
+        //if (EventSystem.current.IsPointerOverGameObject() && Input.GetMouseButtonDown(0)) return;
+        if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
+        {
+            // 只要鼠标在 UI 上，就直接 return，彻底切断向下执行的大世界交互逻辑！
+            // 这样无论你怎么点击面板，背后的传送带和机器都不会有任何反应。
+            return; 
+        }
         // 2. 全局拦截：右键优先级 (取消选中 > 删除实体)
         if (Input.GetMouseButtonDown(1))
         {

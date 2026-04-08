@@ -12,10 +12,10 @@ public enum ModuleLogicalType
 [CreateAssetMenu(fileName = "NewModuleDef", menuName = "Factory/Module Definition")]
 public class ModuleDefinition : ScriptableObject
 {
-    [Header("基础视觉信息")]//(View层使用)
-    public string ModuleID;             
-    public string DisplayName;          
-    public Sprite Icon;                 
+    public string ModuleID;
+    public string DisplayName;
+    
+                  
 
     [Header("物理与逻辑属性")]//(Data层使用)
     public ModuleLogicalType Type = ModuleLogicalType.NormalRect; 
@@ -25,6 +25,25 @@ public class ModuleDefinition : ScriptableObject
 
     [Tooltip("该模块提供的所有增益特效")]
     public List<ModuleEffect> Effects = new List<ModuleEffect>();
+    
+    [Header("视觉表现")]
+    [Tooltip("大世界与网格中实际放置时的俯视物理贴图")]
+    public Sprite Icon;   
+    [Tooltip("UI 左侧列表专用的图标。如果不填，将默认使用上面的 Icon")]
+    public Sprite ItemIcon;
+
+    //[Header("模块属性")]
+    //public ModuleType Type;
+    //public ModuleShapeData Shape;
+
+    /// <summary>
+    /// 获取侧边栏专用的 UI 图标。为了防止旧数据没填报空指针，这里做了回退保护。
+    /// </summary>
+    public Sprite GetItemIconOrDefault()
+    {
+        return ItemIcon != null ? ItemIcon : Icon;
+    }
+
 
     // ==========================================
     // 【工厂方法】：将图纸实例化为运行时的 C# 数据对象
