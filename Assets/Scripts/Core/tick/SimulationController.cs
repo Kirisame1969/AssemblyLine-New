@@ -112,11 +112,24 @@ public class SimulationController : MonoBehaviour
                     if (nextCell.OccupyingModule != null)
                     {
                         Debug.Log($"[诊断] 物品即将撞上: {nextCell.OccupyingModule.GetType().Name}");
-                        if (nextCell.OccupyingModule is InputPortData inputPort)
+                       if (nextCell.OccupyingModule is InputPortData inputPort)
                         {
                             MachineShellData shell = inputPort.ParentShell;
                             bool hasCore = shell.MainCore != null;
-                            bool isFull = hasCore && (shell.MainCore.InputBuffer.Count >= shell.MainCore.MaxBufferSize);
+                            
+                            // 【关键修复】：遍历所有队列，只要有一个没满，就不算 full
+                            bool isFull = true;
+                            if (hasCore)
+                            {
+                                foreach (var q in shell.MainCore.ActiveQueues)
+                                {
+                                    if (q.InputBuffer.Count < q.MaxBufferSize)
+                                    {
+                                        isFull = false;
+                                        break;
+                                    }
+                                }
+                            }
                             Debug.Log($"[诊断] 确认是输入匣！当前机箱是否有核心: {hasCore}。 核心是否已满: {isFull}");
                         }
                     }

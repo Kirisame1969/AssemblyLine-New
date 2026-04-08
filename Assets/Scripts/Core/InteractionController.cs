@@ -11,9 +11,15 @@ public class InteractionController : MonoBehaviour
     [Header("UI建造状态")]
     public BuildableType CurrentBuildType = BuildableType.None; // 唯一的核心状态机
 
+    /*
+    26.4.4 彻底删除原先用于大世界模块预览的 _previewModule 和红绿方块 _previewVisuals 
     [Header("机器拼装预览状态")]
     private MachineModuleData _previewModule = null; 
     private List<GameObject> _previewVisuals = new List<GameObject>();
+    */
+    // 26.4.4 新增专门用于“机器外壳 (Shell)”在大世界放置时的红绿预览列表。
+    [Header("大世界机壳预览状态")]
+    private List<GameObject> _shellPreviewVisuals = new List<GameObject>();
 
     [Header("上帝之手(物品抓取)状态")]
     private ItemData _cursorItem = null;          // 鼠标当前抓着的物品数据
@@ -25,11 +31,14 @@ public class InteractionController : MonoBehaviour
     public GameObject BeltPrefab;
     public GameObject ItemPrefab;
 
-    // 【新增】：公开的贴图插槽
+    /*
+    // 26.4.4 此两份配置将移动到UI管理器
     public Sprite CoreSprite;         // 核心贴图
+    public Sprite DefaultModuleSprite;// 普通模块贴图
+    */
     public Sprite InputPortSprite;    // 输入匣贴图
     public Sprite OutputPortSprite;   // 输出匣贴图
-    public Sprite DefaultModuleSprite;// 普通模块贴图
+
 
     private Dictionary<Vector2Int, GameObject> _spawnedBelts = new Dictionary<Vector2Int, GameObject>();
     private Dictionary<ItemData, GameObject> _spawnedItems = new Dictionary<ItemData, GameObject>();
@@ -37,6 +46,7 @@ public class InteractionController : MonoBehaviour
     [Header("配置测试")]
     public ItemDefinition TestSpawnItem; // 测试按 I 键生成的物品 (拖入铁矿)
     public RecipeDefinition TestRecipe;  // 测试用的核心配方 (拖入熔炼配方)
+    public MachineShellProfile TestShellProfile;    //测试机器外壳
 
 
 #endregion
@@ -52,8 +62,13 @@ public class InteractionController : MonoBehaviour
     {
         
         // 1. 全局拦截：防 UI 穿透
-        if (EventSystem.current.IsPointerOverGameObject() && Input.GetMouseButtonDown(0)) return;
-
+        //if (EventSystem.current.IsPointerOverGameObject() && Input.GetMouseButtonDown(0)) return;
+        if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
+        {
+            // 只要鼠标在 UI 上，就直接 return，彻底切断向下执行的大世界交互逻辑！
+            // 这样无论你怎么点击面板，背后的传送带和机器都不会有任何反应。
+            return; 
+        }
         // 2. 全局拦截：右键优先级 (取消选中 > 删除实体)
         if (Input.GetMouseButtonDown(1))
         {
@@ -99,6 +114,7 @@ public class InteractionController : MonoBehaviour
                 HandleShellPlacement();
                 break;
 
+            /*
             case BuildableType.Module_Core_1x1:
             case BuildableType.Module_Rect_2x1:
             case BuildableType.Module_Rect_2x2:
@@ -111,6 +127,7 @@ public class InteractionController : MonoBehaviour
                     _previewModule.Rotation = (ModuleRotation)(((int)_previewModule.Rotation + 1) % 4);
                 }
                 break;
+              */
         }
     }
     #endregion
@@ -120,7 +137,7 @@ public class InteractionController : MonoBehaviour
     {
         ResetBuildState();
         CurrentBuildType = (BuildableType)typeIndex;
-
+        /* 26.4.4 删除了选中模块时的图纸实例化逻辑
         switch (CurrentBuildType)
         {
             case BuildableType.ConveyorBelt: 
@@ -155,13 +172,15 @@ public class InteractionController : MonoBehaviour
                 Debug.Log("UI：空手模式"); 
                 break;
         }
+        */
     }
-
+    /*
+    // 26.4.4 作废代码
     private void SelectModule(MachineModuleData moduleData)
     {
         _previewModule = moduleData;
     }
-
+    */
     private void ResetBuildState()
     {
         if (_cursorItemVisual != null)
@@ -170,16 +189,21 @@ public class InteractionController : MonoBehaviour
             _cursorItemVisual = null;
             _cursorItem = null; 
         }
-
+        /*
+        26.4.4 模块删除后在世界中清除相关部分的逻辑也不再需要
         foreach (var visual in _previewVisuals) Destroy(visual);
         _previewVisuals.Clear();
         _previewModule = null;
+        */
+        //26.4.4 清理大世界机壳的预览方块
+        foreach (var visual in _shellPreviewVisuals) Destroy(visual);
+        _shellPreviewVisuals.Clear();
 
-        CurrentBuildType = BuildableType.None; 
+        CurrentBuildType = BuildableType.None;
     }
     #endregion
 
-#region 具体建造与拆除逻辑 (被搬家的代码)
+#region 具体建造与拆除逻辑
     
     // 【重构】：原来的 HandleLeftClick 变成了专属的传送带放置
     private void HandleBeltPlacement()
@@ -244,14 +268,14 @@ public class InteractionController : MonoBehaviour
             // 未来我们会建立一个 MachineVisualManager 统一处理视觉销毁)
             //foreach (var v in shell.FloorVisuals) Destroy(v);
             //这里可能是专门用来拆除机器外壳的？
-            // 【新增】：销毁画面上的视觉底板
+            // 销毁画面上的视觉底板
             foreach (GameObject visualQuad in shell.FloorVisuals)
             {
                 Destroy(visualQuad);
             }
             shell.FloorVisuals.Clear();
 
-            // 【新增】：将机箱内部所有的模块贴图一并销毁！
+            // 将机箱内部所有的模块贴图一并销毁,这里保留,用于销毁I/O匣
             foreach (GameObject modVisual in shell.ModuleVisuals)
             {
                 Destroy(modVisual);
@@ -308,6 +332,14 @@ public class InteractionController : MonoBehaviour
                         sr.sprite = _cursorItem.Definition.Icon;
                     }
                 }
+                //26.4.4 新增 [如果格子上没物品，但点击了机箱领地 -> 打开GUI]
+                else if (cell.ShellRegion != null)
+                {
+                    Debug.Log($"点击了机箱 {cell.ShellRegion.ShellID}，准备打开内部配置 GUI 面板！");
+                    // 预留接口，下一步我们将在这里呼叫 UI 管理器
+                    MachineGUIController.Instance.OpenPanel(cell.ShellRegion);
+                }
+            
             }
             else
             {
@@ -418,6 +450,7 @@ public class InteractionController : MonoBehaviour
     #endregion
 
 #region 机器模块拼装引擎 (上一轮补充的代码)
+    /* 26.4.4 作废代码
     // ==========================================
     // 引擎：机器模块的实时预览与放置逻辑
     // ==========================================
@@ -479,7 +512,9 @@ public class InteractionController : MonoBehaviour
         }
         
     }
+    */
 
+    /* 26.4.4 作废代码
     // ==========================================
     // 渲染：动态更新悬浮的红绿方块
     // ==========================================
@@ -536,23 +571,29 @@ public class InteractionController : MonoBehaviour
             _previewVisuals[i].GetComponent<Renderer>().material.color = previewColor;
         }
     }
+    */
 
     // ==========================================
     // 引擎：机器外壳(Shell)的实时预览与放置逻辑
     // ==========================================
     private void HandleShellPlacement()
     {
-        // 假设我们的测试机箱是 3x4 大小
-        int shellWidth = 3;
-        int shellHeight = 4;
+        // 1. 【最关键的防呆拦截】：如果你没有在 Inspector 面板里拖入图纸，直接拦截！
+        // 连绿色的预览框都不会显示，并且控制台会告诉你原因，彻底杜绝报错！
+        if (TestShellProfile == null)
+        {
+            Debug.LogWarning("【严重警告】你忘记在 InteractionController 面板的 TestShellProfile 槽位拖入图纸了！");
+            return; 
+        }
 
-        // 1. 获取鼠标在世界空间的网格坐标 (作为机箱的左下角原点)
-        // 【修复】：统一使用你的网格获取方法，废弃 Mathf.RoundToInt
+        // 2. 彻底抛弃硬编码，直接从你配置的图纸读取尺寸
+        int shellWidth = TestShellProfile.LogicWidth;
+        int shellHeight = TestShellProfile.LogicHeight;
+
         Vector2Int worldOrigin = GetMouseGridPosition();
-        
         bool canPlaceShell = true;
 
-        // 2. 探查大世界网格：确保这 3x4 的区域是完全空旷的
+        // 3. 探查大世界网格：确保这片区域是完全空旷的
         for (int x = 0; x < shellWidth; x++)
         {
             for (int y = 0; y < shellHeight; y++)
@@ -560,7 +601,6 @@ public class InteractionController : MonoBehaviour
                 Vector2Int checkPos = new Vector2Int(worldOrigin.x + x, worldOrigin.y + y);
                 GridCell cell = GridManager.Instance.GetGridCell(checkPos);
 
-                // 如果该位置超出了世界地图，或者已经有了别的机箱/传送带，则不允许放置
                 if (cell == null || cell.ShellRegion != null || cell.Belt != null)
                 {
                     // ====== 照妖镜代码开始 ======
@@ -577,31 +617,48 @@ public class InteractionController : MonoBehaviour
             }
         }
 
-        // 3. 绘制机箱的红绿灯预览 (复用 _previewVisuals)
+        // 4. 绘制机箱的红绿灯预览
         UpdateShellPreviewVisuals(worldOrigin, shellWidth, shellHeight, canPlaceShell);
 
-        // 4. 执行放置 (左键点击)
+        // 5. 执行放置 (左键点击)
         if (Input.GetMouseButtonDown(0))
         {
             if (canPlaceShell)
             {
-                // 创建真实的机壳数据
                 RectInt bounds = new RectInt(worldOrigin.x, worldOrigin.y, shellWidth, shellHeight);
-                MachineShellData newShell = new MachineShellData(bounds);
+                
+                // 实例化真实数据（传入你配置好的图纸）
+                MachineShellData newShell = new MachineShellData(TestShellProfile, bounds);
 
-                // 【硬编码加入我们之前设计的测试障碍】
-                // 加入横向隔断墙
-                newShell.PartitionWalls.Add(new InternalWall(new Vector2Int(0, 1), new Vector2Int(0, 2)));
-                newShell.PartitionWalls.Add(new InternalWall(new Vector2Int(1, 1), new Vector2Int(1, 2)));
-                // 加入右上角的绝对死区
-                newShell.DeadCells.Add(new Vector2Int(2, 3));
+                // 安全读取图纸中的物理限制配置
+                newShell.DeadCells = TestShellProfile.DeadCells != null 
+                    ? new HashSet<Vector2Int>(TestShellProfile.DeadCells) 
+                    : new HashSet<Vector2Int>();
 
-                // 正式将机壳注册到大世界网格中，并生成实体的底板视觉效果
+                newShell.PartitionWalls = TestShellProfile.PartitionWalls != null 
+                    ? new HashSet<InternalWall>(TestShellProfile.PartitionWalls) 
+                    : new HashSet<InternalWall>();
+
+                // ====================================================
+                // 【终极防呆补丁】：强制初始化内部容器，防止底层漏写导致 NRE
+                // ====================================================
+                if (newShell.FloorVisuals == null) newShell.FloorVisuals = new List<GameObject>();
+                if (newShell.Modules == null) newShell.Modules = new List<MachineModuleData>();
+                if (newShell.ModuleVisuals == null) newShell.ModuleVisuals = new List<GameObject>();
+                if (newShell.InputPorts == null) newShell.InputPorts = new List<InputPortData>();
+                if (newShell.OutputPorts == null) newShell.OutputPorts = new List<OutputPortData>();
+                
+                if (MachineManager.Instance != null && MachineManager.Instance.AllActiveShells == null)
+                {
+                    MachineManager.Instance.AllActiveShells = new List<MachineShellData>();
+                }
+                // ====================================================
+
+                // 正式将机壳注册到大世界网格中
                 PlaceShellInWorld(newShell);
                 
-                // 放置完毕，清空双手
                 ResetBuildState();
-                Debug.Log($"✅ 成功放置了测试机箱！位置: {worldOrigin}");
+                Debug.Log($"✅ 成功按照图纸【{TestShellProfile.DisplayName}】放置了机壳！位置: {worldOrigin}");
             }
             else
             {
@@ -618,11 +675,12 @@ public class InteractionController : MonoBehaviour
         Color previewColor = canPlace ? new Color(0, 1, 0, 0.3f) : new Color(1, 0, 0, 0.3f);
 
         // 如果视觉块数量不对 (3x4 = 12格)，重新生成
+        // 26.4.4 将原先已被删除的 _previewVisuals 全面替换为 _shellPreviewVisuals
         int requiredCount = width * height;
-        if (_previewVisuals.Count != requiredCount)
+        if (_shellPreviewVisuals.Count != requiredCount)
         {
-            foreach (var v in _previewVisuals) Destroy(v);
-            _previewVisuals.Clear();
+            foreach (var v in _shellPreviewVisuals) Destroy(v);
+            _shellPreviewVisuals.Clear();
 
             for (int i = 0; i < requiredCount; i++)
             {
@@ -630,7 +688,7 @@ public class InteractionController : MonoBehaviour
                 Destroy(quad.GetComponent<Collider>());
                 Renderer r = quad.GetComponent<Renderer>();
                 r.material = new Material(Shader.Find("Sprites/Default"));
-                _previewVisuals.Add(quad);
+                _shellPreviewVisuals.Add(quad);
             }
         }
 
@@ -640,12 +698,12 @@ public class InteractionController : MonoBehaviour
         {
             for (int y = 0; y < height; y++)
             {
-                // 【修复】：用 GridManager 算出精准的世界坐标
+                // 用 GridManager 算出精准的世界坐标
                 Vector2Int currentGridPos = new Vector2Int(origin.x + x, origin.y + y);
                 Vector2 exactPos = GridManager.Instance.GridToWorldPosition(currentGridPos);
                 
-                _previewVisuals[index].transform.position = new Vector3(exactPos.x, exactPos.y, 0);
-                _previewVisuals[index].GetComponent<Renderer>().material.color = previewColor;
+                _shellPreviewVisuals[index].transform.position = new Vector3(exactPos.x, exactPos.y, 0);
+                _shellPreviewVisuals[index].GetComponent<Renderer>().material.color = previewColor;
                 index++;
             }
         }
@@ -780,39 +838,32 @@ public class InteractionController : MonoBehaviour
             }
         }
     }
-    #endregion
+    
 
+    // ==========================================
+    // 视觉落地：在机箱内生成真实的模块贴图实体    
+    // ==========================================
+    // 26.4.4 改名并降级视觉生成。不再大张旗鼓地渲染核心贴图，只覆盖 I/O 匣子开口
+    // 拟改名: SpawnPortOverlayVisual
+    // 供未来的 UI 面板拼装成功后调用
 
-#region 新区域1
-    // ==========================================
-    // 视觉落地：在机箱内生成真实的模块贴图实体
-    // ==========================================
-    private void SpawnModuleVisual(MachineShellData shell, MachineModuleData module)
+    public void SpawnPortOverlayVisual(MachineShellData shell, MachineModuleData module)
     {
-        // 遍历模块占用的每一个格子 (1x1模块遍历1次，2x2模块会遍历4次铺设贴图)
+        // 只有输入匣和输出匣需要在大世界上“留痕”
+        if (!(module is InputPortData) && !(module is OutputPortData)) return;
+
         foreach (Vector2Int localPos in module.GetOccupiedLocalCells())
         {
-            // 1. 计算精确的世界坐标
             Vector2Int worldGridPos = new Vector2Int(shell.Bounds.xMin + localPos.x, shell.Bounds.yMin + localPos.y);
             Vector2 exactPos = GridManager.Instance.GridToWorldPosition(worldGridPos);
 
-            // 2. 创建一个干净的空物体
-            GameObject modVisual = new GameObject($"Module_{module.GetType().Name}");
-            // Z轴设为 -0.1f，保证贴图显示在机箱底板(0f)的前面，防止画面闪烁
+            GameObject modVisual = new GameObject($"PortOverlay_{module.GetType().Name}");
             modVisual.transform.position = new Vector3(exactPos.x, exactPos.y, -0.1f); 
-
-            // 3. 挂载 Unity 官方的 2D 贴图渲染器
             SpriteRenderer sr = modVisual.AddComponent<SpriteRenderer>();
 
-            // 4. 根据模块的类型，塞入对应的贴图，并处理旋转
-            if (module is MachineCoreData)
-            {
-                sr.sprite = CoreSprite;
-            }
-            else if (module is InputPortData inputPort)
+            if (module is InputPortData inputPort)
             {
                 sr.sprite = InputPortSprite;
-                // 复用你之前写给传送带的旋转方法，让贴图方向完美匹配内部数据！
                 UpdateVisualRotation(modVisual, inputPort.FacingDir); 
             }
             else if (module is OutputPortData outputPort)
@@ -820,13 +871,30 @@ public class InteractionController : MonoBehaviour
                 sr.sprite = OutputPortSprite;
                 UpdateVisualRotation(modVisual, outputPort.FacingDir);
             }
-            else
-            {
-                sr.sprite = DefaultModuleSprite;
-            }
 
-            // 5. 将生成的视觉实体扔进机箱的“垃圾袋”，方便未来统一销毁
             shell.ModuleVisuals.Add(modVisual);
+        }
+    }
+
+    // ==========================================
+    // 【Phase 4 新增】：刷新大世界机箱端口的视觉表现
+    // 供 UI 面板放置/拆除模块后调用
+    // ==========================================
+    public void RefreshPortOverlayVisuals(MachineShellData shell)
+    {
+        if (shell == null) return;
+
+        // 1. 清理该机箱旧的大世界模块视觉贴图
+        foreach (var visual in shell.ModuleVisuals)
+        {
+            if (visual != null) Destroy(visual);
+        }
+        shell.ModuleVisuals.Clear();
+
+        // 2. 遍历当前机箱底层真实的数据，重新生成 I/O 匣子的印记
+        foreach (var module in shell.Modules)
+        {
+            SpawnPortOverlayVisual(shell, module);
         }
     }
 
@@ -857,8 +925,6 @@ public class InteractionController : MonoBehaviour
         }
     }
 
-
-
-    #endregion
+#endregion
 
 }
