@@ -13,9 +13,6 @@ public class InteractionController : MonoBehaviour
 
     /*
     26.4.4 彻底删除原先用于大世界模块预览的 _previewModule 和红绿方块 _previewVisuals 
-    [Header("机器拼装预览状态")]
-    private MachineModuleData _previewModule = null; 
-    private List<GameObject> _previewVisuals = new List<GameObject>();
     */
     // 26.4.4 新增专门用于“机器外壳 (Shell)”在大世界放置时的红绿预览列表。
     [Header("大世界机壳预览状态")]
@@ -114,20 +111,7 @@ public class InteractionController : MonoBehaviour
                 HandleShellPlacement();
                 break;
 
-            /*
-            case BuildableType.Module_Core_1x1:
-            case BuildableType.Module_Rect_2x1:
-            case BuildableType.Module_Rect_2x2:
-            case BuildableType.Module_InputPort:
-            case BuildableType.Module_OutputPort:
-                // 模块拼装逻辑
-                UpdateModulePreviewAndPlacement();
-                if (Input.GetKeyDown(KeyCode.R) && _previewModule != null)
-                {
-                    _previewModule.Rotation = (ModuleRotation)(((int)_previewModule.Rotation + 1) % 4);
-                }
-                break;
-              */
+           
         }
     }
     #endregion
@@ -138,49 +122,11 @@ public class InteractionController : MonoBehaviour
         ResetBuildState();
         CurrentBuildType = (BuildableType)typeIndex;
         /* 26.4.4 删除了选中模块时的图纸实例化逻辑
-        switch (CurrentBuildType)
-        {
-            case BuildableType.ConveyorBelt: 
-                Debug.Log("UI：传送带模式"); 
-                break;
-            case BuildableType.MachineShell_Test: 
-                Debug.Log("UI：机器外壳模式"); 
-                break;
-           case BuildableType.Module_Core_1x1:
-                Debug.Log("UI选中：1x1 机器核心");
-                MachineCoreData newCore = new MachineCoreData();
-                newCore.CurrentRecipe = TestRecipe; // 【关键】：把配方图纸塞进核心的脑袋里！
-                SelectModule(newCore);
-                break;
-            case BuildableType.Module_Rect_2x1: 
-                SelectModule(new RectModuleData(2, 1)); 
-                Debug.Log("UI：1x2模块");
-                break;
-            case BuildableType.Module_Rect_2x2: 
-                SelectModule(new RectModuleData(2, 2)); 
-                Debug.Log("UI：2x2模块");
-                break;
-            case BuildableType.Module_InputPort:
-                Debug.Log("UI：输入匣");
-                SelectModule(new InputPortData());
-                break;
-            case BuildableType.Module_OutputPort:
-                Debug.Log("UI：输出匣");
-                SelectModule(new OutputPortData());
-                break;
-            case BuildableType.None: 
-                Debug.Log("UI：空手模式"); 
-                break;
-        }
         */
     }
-    /*
-    // 26.4.4 作废代码
-    private void SelectModule(MachineModuleData moduleData)
-    {
-        _previewModule = moduleData;
-    }
-    */
+    
+   
+   
     private void ResetBuildState()
     {
         if (_cursorItemVisual != null)
@@ -189,12 +135,7 @@ public class InteractionController : MonoBehaviour
             _cursorItemVisual = null;
             _cursorItem = null; 
         }
-        /*
-        26.4.4 模块删除后在世界中清除相关部分的逻辑也不再需要
-        foreach (var visual in _previewVisuals) Destroy(visual);
-        _previewVisuals.Clear();
-        _previewModule = null;
-        */
+        
         //26.4.4 清理大世界机壳的预览方块
         foreach (var visual in _shellPreviewVisuals) Destroy(visual);
         _shellPreviewVisuals.Clear();
@@ -450,128 +391,6 @@ public class InteractionController : MonoBehaviour
     #endregion
 
 #region 机器模块拼装引擎 (上一轮补充的代码)
-    /* 26.4.4 作废代码
-    // ==========================================
-    // 引擎：机器模块的实时预览与放置逻辑
-    // ==========================================
-    private void UpdateModulePreviewAndPlacement()
-    {
-        if (_previewModule == null) return;
-
-        // 1. 获取鼠标在世界空间的网格坐标
-        // 【修复】：统一使用标准网格定位，废弃 ScreenToWorldPoint 后的四舍五入
-        Vector2Int worldPos = GetMouseGridPosition();
-
-        // 2. 探查鼠标下方的大世界网格，看看有没有“机箱”存在
-        GridCell hoverCell = GridManager.Instance.GetGridCell(worldPos);
-        MachineShellData targetShell = hoverCell?.ShellRegion;
-
-        bool canPlace = false;
-
-        // 3. 坐标系转换与四重锁校验
-        if (targetShell != null)
-        {
-            // 如果下方有机箱：计算出局部坐标并赋给模块
-            Vector2Int localPos = new Vector2Int(worldPos.x - targetShell.Bounds.xMin, worldPos.y - targetShell.Bounds.yMin);
-            _previewModule.LocalBottomLeft = localPos;
-            
-            canPlace = MachineManager.Instance.CanPlaceModule(targetShell, _previewModule);
-        }
-        else
-        {
-            // 【Bug修复】：如果下方是空地，将模块的局部原点重置为 (0,0)
-            // 这样在外部画图时，坐标才不会叠加之前的残留量
-            _previewModule.LocalBottomLeft = Vector2Int.zero; 
-            
-            canPlace = false;
-        }
-
-        // 4. 渲染红绿灯虚影
-        UpdatePreviewVisuals(targetShell, canPlace, worldPos);
-
-        // 5. 执行放置 (左键点击)
-        if (Input.GetMouseButtonDown(0))
-        {
-            if (canPlace && targetShell != null)
-            {
-                // 正式写入数据
-                MachineManager.Instance.PlaceModule(targetShell, _previewModule);
-                
-                // 【注意】：放置成功后清空双手。
-                // 如果你想实现像异星工厂一样“点一次放一个，可以连续放置”，
-                // 你需要在这里不调用 ResetBuildState，而是重新 new 一个相同类型的模块赋值给 _previewModule。
-                // 目前我们先采用最稳妥的“放完就清空”模式：
-                // 【新增】：底层数据写完后，在画面上真正生成你的精美贴图！
-                SpawnModuleVisual(targetShell, _previewModule);
-                ResetBuildState(); 
-            }
-            else
-            {
-                Debug.LogWarning("放置失败：位置不合法或不在机箱内部！");
-            }
-        }
-        
-    }
-    */
-
-    /* 26.4.4 作废代码
-    // ==========================================
-    // 渲染：动态更新悬浮的红绿方块
-    // ==========================================
-    private void UpdatePreviewVisuals(MachineShellData targetShell, bool canPlace, Vector2Int fallbackWorldPos)
-    {
-        // 颜色定义：绿灯(允许) / 红灯(禁止)
-        Color previewColor = canPlace ? new Color(0, 1, 0, 0.5f) : new Color(1, 0, 0, 0.5f);
-
-        // 获取模块当前旋转状态下需要占用的所有坐标
-        List<Vector2Int> occupiedCells = _previewModule.GetOccupiedLocalCells();
-
-        // 如果现有的视觉块数量对不上（比如刚按了旋转键，或者刚抓起模块），就重新生成
-        if (_previewVisuals.Count != occupiedCells.Count)
-        {
-            // 清理旧的
-            foreach (var v in _previewVisuals) Destroy(v);
-            _previewVisuals.Clear();
-
-            // 生成新的 (这里为了演示继续用 Quad，实际开发建议用你自己的 Prefab)
-            for (int i = 0; i < occupiedCells.Count; i++)
-            {
-                GameObject quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
-                Destroy(quad.GetComponent<Collider>()); // 关掉碰撞体防止挡鼠标
-                
-                Renderer r = quad.GetComponent<Renderer>();
-                r.material = new Material(Shader.Find("Sprites/Default")); // 使用支持半透明的默认精灵材质
-                
-                _previewVisuals.Add(quad);
-            }
-        }
-
-        // 实时更新每一个方块的位置和颜色
-        for (int i = 0; i < occupiedCells.Count; i++)
-        {
-            Vector2Int localCell = occupiedCells[i];
-            Vector2 worldCellPos;
-
-            if (targetShell != null)
-            {
-                // 如果有机箱，基于机箱原点计算世界坐标
-                worldCellPos = new Vector2(targetShell.Bounds.xMin + localCell.x, targetShell.Bounds.yMin + localCell.y);
-            }
-            else
-            {
-                // 如果在野外，就直接以鼠标当前位置为基准画红块
-                worldCellPos = new Vector2(fallbackWorldPos.x + localCell.x, fallbackWorldPos.y + localCell.y);
-            }
-
-            // worldCellPos 目前是个 Vector2（之前写错了类型），把它转回标准的 Grid 坐标再输出
-            Vector2Int currentGridPos = new Vector2Int(Mathf.RoundToInt(worldCellPos.x), Mathf.RoundToInt(worldCellPos.y));
-            Vector2 exactPos = GridManager.Instance.GridToWorldPosition(currentGridPos);
-
-            _previewVisuals[i].transform.position = new Vector3(exactPos.x, exactPos.y, 0);
-            _previewVisuals[i].GetComponent<Renderer>().material.color = previewColor;
-        }
-    }
-    */
 
     // ==========================================
     // 引擎：机器外壳(Shell)的实时预览与放置逻辑
