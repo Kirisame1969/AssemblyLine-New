@@ -99,9 +99,12 @@ public class MachineGUIController : MonoBehaviour
         _currentShell = null;
 
         // 【新增】：关闭面板时，清空手里抓着的模块
+        ClearHands();
+        /*
         _selectedModuleDef = null;
         _previewModuleData = null;
         SimulationController.Instance.CurrentSpeed = TimeSpeed.Normal; // 恢复时间
+        */
     }
 
     // ==========================================
@@ -321,7 +324,19 @@ public class MachineGUIController : MonoBehaviour
                     MachineManager.Instance.PlaceModule(_currentShell, finalModule);
                     SpawnUIModuleVisual(finalModule);
                     InteractionController.Instance.RefreshPortOverlayVisuals(_currentShell);
-
+                    // ==========================================
+                    // 【缝合断层】：如果是核心模块落地，立刻为其注入测试配方！
+                    // ==========================================
+                    if (finalModule is MachineCoreData)
+                    {
+                        // 直接从大世界交互控制器中抓取你拖入的 TestRecipe 赋值给第 0 条队列
+                        RecipeDefinition testRecipe = InteractionController.Instance.TestRecipe;
+                        if (testRecipe != null)
+                        {
+                            MachineManager.Instance.SetRecipe(_currentShell, 0, testRecipe);
+                        }
+                    }
+                    // ==========================================
                     // 放完后你可以选择清空双手，或者像 Factorio 一样保持拿取状态继续连放
                     // 如果你想连放，就把下面这行注释掉。目前我们设定为放一次就清空双手：
                     ClearHands(); 

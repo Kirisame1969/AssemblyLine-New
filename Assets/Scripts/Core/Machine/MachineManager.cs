@@ -166,6 +166,27 @@ public class MachineManager : MonoBehaviour
 
         Debug.Log($"[系统提示] 成功拆卸模块！当前模块数: {shell.Modules.Count}");
     }
+
+
+    // ==========================================
+    // 【新增】：提供给 UI 层的标准配方配置接口
+    // 严格遵循 MVC，仅修改纯数据，不涉及任何表现层组件
+    // ==========================================
+    public void SetRecipe(MachineShellData shell, int queueIndex, RecipeDefinition recipe)
+    {
+        if (shell == null || shell.MainCore == null) 
+        {
+            Debug.LogWarning("[数据层] 无法配置配方：机箱为空或尚未安装核心模块！");
+            return;
+        }
+        
+        // 防越界校验
+        if (queueIndex >= 0 && queueIndex < shell.MainCore.ActiveQueues.Count)
+        {
+            shell.MainCore.ActiveQueues[queueIndex].CurrentRecipe = recipe;
+            Debug.Log($"[数据层] 成功为机箱 {shell.ShellID} 的流水线 [{queueIndex}] 挂载配方: {(recipe != null ? recipe.DisplayName : "空")}");
+        }
+    }
     // ==========================================
     // 全局机器数据缓存
     // ==========================================
@@ -175,6 +196,7 @@ public class MachineManager : MonoBehaviour
     // ==========================================
     // 供外部传送带调用的“喂食”接口 (多线程版)
     // ==========================================
+    /*
     public bool TryIngestItem(GridCell targetCell, ItemData item)
     {
         if (targetCell.OccupyingModule is InputPortData inputPort)
@@ -194,29 +216,65 @@ public class MachineManager : MonoBehaviour
             }
         }
         return false; // 吞噬失败（没孔、没核心、或者所有队列肚子都满了）
+    }*/
+    public bool TryIngestItem(GridCell targetCell, ItemData item)
+    {
+        // 1. 确认该格子确实是一个输入匣
+        if (targetCell.OccupyingModule is InputPortData inputPort)
+        {
+            MachineShellData shell = inputPort.ParentShell;
+            
+            // 2. 确认机箱装了核心，并且有活跃的加工队列
+            if (shell.MainCore != null && shell.MainCore.ActiveQueues.Count > 0)
+            {
+                // 3. 寻找一个没满的队列（目前默认塞给第一个队列）
+                ProcessingQueue targetQueue = shell.MainCore.ActiveQueues[0];
+                
+                if (targetQueue.InputBuffer.Count < targetQueue.MaxBufferSize)
+                {
+                    // 【核心操作】：在纯数据层，将物品实体移交进机器的胃里！
+                    targetQueue.InputBuffer.Add(item);
+                    
+                    // 打印日志：确认物品到底有没有进肚子
+                    Debug.Log($"[机器进食] {shell.ShellID} 吞入了 {item.Definition.name}, 当前肚子里的数量: {targetQueue.InputBuffer.Count}");
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     // ==========================================
-    // 核心加工与输出循环 (多线程+增益版)
+    // 核心加工与输出循环 (多线程+增益版 + 严苛空间校验)
     // ==========================================
     public void TickMachines(float tickDelta)
     {
-        foreach (MachineShellData shell in AllActiveShells)
+        // 【性能优化】：在极高频的 Tick 驱动中，使用 for 循环避免 foreach 产生的隐性迭代器装箱开销
+        for (int i = 0; i < AllActiveShells.Count; i++)
         {
+            MachineShellData shell = AllActiveShells[i];
             if (shell.MainCore == null) continue; // 没装核心的空壳子不工作
             MachineCoreData core = shell.MainCore;
 
             // ------------------------------------
-            // 阶段 1：多队列并发加工引擎
+            // 阶段 1：多队列并发加工引擎 (Process)
             // ------------------------------------
-            foreach (ProcessingQueue queue in core.ActiveQueues)
+            for (int j = 0; j < core.ActiveQueues.Count; j++)
             {
+                ProcessingQueue queue = core.ActiveQueues[j];
+
+                
+                
+                //===================================
+
                 if (queue.CurrentRecipe != null)
                 {
                     // 校验：当前这条流水线的原料够不够？产物区还有没有空位？
                     if (HasEnoughInputs(queue, queue.CurrentRecipe) && queue.OutputBuffer.Count < queue.MaxBufferSize)
                     {
-                        // 【核心架构亮点】：无缝接入 Buff 系统！
+
+                        // 🔴 探针 C：检查进度条是否在正常推进
+                        Debug.Log($"[探针C] {shell.ShellID} 原料充足，正在加工！当前进度: {queue.ProcessingProgress} / {queue.CurrentRecipe.ProcessingTime}");
                         // 进度 = 基础时间流逝(tickDelta) * 机器当前的加速倍率
                         queue.ProcessingProgress += tickDelta * shell.CurrentStats.SpeedMultiplier;
 
@@ -226,58 +284,70 @@ public class MachineManager : MonoBehaviour
                             ConsumeInputs(queue, queue.CurrentRecipe);
                             ProduceOutputs(queue, queue.CurrentRecipe);
                             queue.ProcessingProgress = 0f; // 进度归零
-                            Debug.Log($"[{shell.ShellID}] 某条流水线已完成【{queue.CurrentRecipe.DisplayName}】加工！");
+                            
+                            // 提示：在大规模压测时，建议注释此行以节约 I/O 性能
+                            // Debug.Log($"[{shell.ShellID}] 某条流水线已完成【{queue.CurrentRecipe.DisplayName}】加工！");
                         }
                     }
                     else
                     {
-                        // 原料不足或产物堆积，该队列进度暂停
+                        // 原料不足或产物堆积，该队列进度清零/暂停
                         queue.ProcessingProgress = 0f; 
                     }
                 }
             }
 
             // ------------------------------------
-            // 阶段 2：吐出逻辑 (支持多输出匣)
+            // 阶段 2：吐出逻辑 (支持多输出匣) (Push)
             // ------------------------------------
             if (shell.OutputPorts.Count > 0)
             {
-                foreach (OutputPortData port in shell.OutputPorts)
+                for (int p = 0; p < shell.OutputPorts.Count; p++)
                 {
+                    OutputPortData port = shell.OutputPorts[p];
+
                     // 在所有的队列中，寻找第一个有产物可以吐出的队列
                     ProcessingQueue readyQueue = null;
-                    foreach (ProcessingQueue queue in core.ActiveQueues)
+                    for (int q = 0; q < core.ActiveQueues.Count; q++)
                     {
-                        if (queue.OutputBuffer.Count > 0)
+                        if (core.ActiveQueues[q].OutputBuffer.Count > 0)
                         {
-                            readyQueue = queue;
-                            break;
+                            readyQueue = core.ActiveQueues[q];
+                            break; // 找到就立刻跳出，优先服务该队列
                         }
                     }
 
                     // 如果有产物可以吐
                     if (readyQueue != null)
                     {
-                        // 计算输出匣在大世界中的前方坐标
-                        Vector2Int portWorldPos = new Vector2Int(shell.Bounds.xMin + port.LocalBottomLeft.x, shell.Bounds.yMin + port.LocalBottomLeft.y);
-                        Vector2Int forwardPos = GetForwardPosition(portWorldPos, port.FacingDir);
-                        GridCell forwardCell = GridManager.Instance.GetGridCell(forwardPos);
-
-                        if (forwardCell != null && forwardCell.Belt != null && forwardCell.Item == null)
+                        // 【核心架构替换点】：使用我们第一步制定的空间映射协议
+                        // 替代原有简单的坐标相加。这道防线会自动拦截“朝向对内”、“深埋机箱”等非法端口！
+                        if (TryGetExternalPosition(shell, port, out Vector2Int forwardPos))
                         {
-                            // 1. 数据层转移
-                            ItemData outItem = readyQueue.OutputBuffer[0];
-                            readyQueue.OutputBuffer.RemoveAt(0);
-                            
-                            forwardCell.Item = outItem;
-                            outItem.CurrentCell = forwardCell;
-                            outItem.Progress = 0f; 
+                            GridCell forwardCell = GridManager.Instance.GetGridCell(forwardPos);
 
-                            // 2. 物理层注册与视觉层渲染
-                            SimulationController.Instance.RegisterItem(outItem);
-                            InteractionController.Instance.SpawnItemVisual(outItem, forwardPos);
+                            // 严苛握手：不仅要有传送带、没有物品，且该格子上绝对不能被另一个机壳或模块物理占领！
+                            if (forwardCell != null && forwardCell.Belt != null && forwardCell.Item == null && forwardCell.OccupyingModule == null)
+                            {
+                                // 1. 数据层剥离
+                                ItemData outItem = readyQueue.OutputBuffer[0];
+                                readyQueue.OutputBuffer.RemoveAt(0);
+                                
+                                // 赋予大世界数据流坐标
+                                forwardCell.Item = outItem;
+                                outItem.CurrentCell = forwardCell;
+                                outItem.Progress = 0f; 
 
-                            break; // 这个输出口吐出物品后跳出，每次 Update 每个口只吐 1 个
+                                // 2. 物理层注册与视觉层渲染
+                                SimulationController.Instance.RegisterItem(outItem);
+                                
+                                if (InteractionController.Instance != null)
+                                {
+                                    InteractionController.Instance.SpawnItemVisual(outItem, forwardPos);
+                                }
+
+                                // 跳出内部逻辑，这个物理端口本 Tick 已经完成了一次吞吐任务
+                            }
                         }
                     }
                 }
@@ -343,5 +413,78 @@ public class MachineManager : MonoBehaviour
             }
         }
     }
+
+    // ==========================================
+    // 附加至 MachineManager.cs 的 I/O 坐标映射服务
+    // ==========================================
+
+    /// <summary>
+    /// 尝试获取【输入端口】对外的绝对大世界交互坐标
+    /// </summary>
+    /// <param name="shell">所属机器外壳数据</param>
+    /// <param name="port">输入端口数据</param>
+    /// <param name="externalPos">输出：外部传送带所在的大世界坐标</param>
+    /// <returns>如果是贴边的合法向外端口返回true，否则返回false</returns>
+    public bool TryGetExternalPosition(MachineShellData shell, InputPortData port, out Vector2Int externalPos)
+    {
+        return CalculateExternalPos(shell, port.LocalBottomLeft, port.FacingDir, out externalPos);
+    }
+
+    /// <summary>
+    /// 尝试获取【输出端口】对外的绝对大世界交互坐标
+    /// </summary>
+    public bool TryGetExternalPosition(MachineShellData shell, OutputPortData port, out Vector2Int externalPos)
+    {
+        return CalculateExternalPos(shell, port.LocalBottomLeft, port.FacingDir, out externalPos);
+    }
+
+    /// <summary>
+    /// 核心计算逻辑：局部坐标转大世界目标交互坐标，并进行严苛的合法性校验
+    /// </summary>
+    private bool CalculateExternalPos(MachineShellData shell, Vector2Int localAnchor, Direction facingDir, out Vector2Int externalPos)
+    {
+        externalPos = Vector2Int.zero;
+        if (shell == null) return false;
+
+        // 1. 获取机器在大世界中的左下角原点
+        Vector2Int shellGlobalOrigin = shell.Bounds.position;
+
+        // 2. 计算端口模块本身的大世界绝对坐标
+        Vector2Int portGlobalPos = shellGlobalOrigin + localAnchor;
+
+        // 3. 根据朝向获取方向向量偏移
+        Vector2Int dirOffset = GetDirectionOffset(facingDir);
+
+        // 4. 计算预期的交互坐标（大世界坐标系）
+        externalPos = portGlobalPos + dirOffset;
+
+        // 5. 绝对防线：利用 RectInt 原生方法检查目标坐标是否在机箱内部！
+        // 如果 Bounds.Contains 返回 true，说明该端口尝试吸取/吐出物品到机壳物理占地内
+        // 这属于非法摆放（深埋或向内），在数据层彻底掐断其吞吐能力
+        if (shell.Bounds.Contains(externalPos))
+        {
+            return false; 
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// 纯数学辅助：方向枚举转向量（基于你 BeltData.cs 中的顺时针枚举）
+    /// Up=0, Right=1, Down=2, Left=3
+    /// </summary>
+    private Vector2Int GetDirectionOffset(Direction dir)
+    {
+        switch (dir)
+        {
+            case Direction.Up:    return new Vector2Int(0, 1);
+            case Direction.Right: return new Vector2Int(1, 0);
+            case Direction.Down:  return new Vector2Int(0, -1);
+            case Direction.Left:  return new Vector2Int(-1, 0);
+            default:              return Vector2Int.zero;
+        }
+    }
+    
+
 
 }
