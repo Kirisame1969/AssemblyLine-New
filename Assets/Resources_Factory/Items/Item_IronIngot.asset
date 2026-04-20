@@ -15,4 +15,4 @@ MonoBehaviour:
   ItemID: iron_ingot
   DisplayName: "\u94C1\u952D"
   Icon: {fileID: 21300000, guid: e928db226d305364a9ab2e12a94f5540, type: 3}
-  BasePrice: 15
+  BasePrice: 1500

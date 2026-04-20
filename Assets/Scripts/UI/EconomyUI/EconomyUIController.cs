@@ -1,4 +1,4 @@
-// 新建文件或附加到你的 UI 目录：EconomyUIController.cs
+// EconomyUIController.cs
 using UnityEngine;
 using TMPro; // 强烈建议使用 TextMeshPro
 
