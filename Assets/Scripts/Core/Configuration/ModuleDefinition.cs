@@ -6,7 +6,9 @@ public enum ModuleLogicalType
     NormalRect, // 普通异形/矩形模块
     Core,       // 机器核心 (处理配方)
     InputPort,  // 输入匣
-    OutputPort  // 输出匣
+    OutputPort,  // 输出匣
+    ExporterCore,  // 交付仓库核心 (黑洞变现)
+    ImporterCore   // 市场采购终端
 }
 
 [CreateAssetMenu(fileName = "NewModuleDef", menuName = "Factory/Module Definition")]
@@ -62,6 +64,12 @@ public class ModuleDefinition : ScriptableObject
                 break;
             case ModuleLogicalType.OutputPort:
                 newInstance = new OutputPortData();  
+                break;
+            case ModuleLogicalType.ExporterCore://  仓库核心
+                newInstance = new ExporterCoreData(); 
+                break;
+            case ModuleLogicalType.ImporterCore://  购买核心
+                newInstance = new ImporterCoreData();
                 break;
             case ModuleLogicalType.NormalRect:
             default:

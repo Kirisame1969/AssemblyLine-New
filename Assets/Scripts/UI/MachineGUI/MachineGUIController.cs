@@ -327,13 +327,18 @@ public class MachineGUIController : MonoBehaviour
                     // ==========================================
                     // 【缝合断层】：如果是核心模块落地，立刻为其注入测试配方！
                     // ==========================================
-                    if (finalModule is MachineCoreData)
+                    if (finalModule is MachineCoreData coreData)
                     {
-                        // 直接从大世界交互控制器中抓取你拖入的 TestRecipe 赋值给第 0 条队列
-                        RecipeDefinition testRecipe = InteractionController.Instance.TestRecipe;
-                        if (testRecipe != null)
+                        // 1. 如果是普通的加工核心，注入配方
+                        if (coreData.GetType() == typeof(MachineCoreData) && InteractionController.Instance.TestRecipe != null)
                         {
-                            MachineManager.Instance.SetRecipe(_currentShell, 0, testRecipe);
+                            MachineManager.Instance.SetRecipe(_currentShell, 0, InteractionController.Instance.TestRecipe);
+                        }
+                        // 2. 【新增】：如果是采购终端，注入采购目标！
+                        else if (coreData is ImporterCoreData importerCore && InteractionController.Instance.TestImportItem != null)
+                        {
+                            importerCore.TargetItem = InteractionController.Instance.TestImportItem;
+                            Debug.Log($"[UI控制层] 采购终端已锁定目标: {importerCore.TargetItem.DisplayName}");
                         }
                     }
                     // ==========================================

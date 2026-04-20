@@ -7,6 +7,6 @@ public class ItemDefinition : ScriptableObject
     public string ItemID;         // 唯一代码，如 "iron_ore"
     public string DisplayName;    // 游戏内显示的名称，如 "铁矿石"
     public Sprite Icon;           // 【关键】物品在传送带上真正长什么样
-    
+    public int BasePrice = 10;    // 该物品在市场中的基准价值
     // 未来你还可以加：最大堆叠数、物品描述、价值等...
 }

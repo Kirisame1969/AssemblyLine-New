@@ -275,3 +275,25 @@ public class OutputPortData : MachineModuleData
 
     public List<string> AllowedItems = new List<string>(); 
 }
+
+// ==========================================
+// 【新增特殊核心】：交付仓库 (Market Exporter)
+// 专门用于吞噬输入物品并转化为全局资金，无产出。
+// ==========================================
+public class ExporterCoreData : MachineCoreData
+{
+    // 继承自 MachineCoreData，天生拥有 ActiveQueues 和 InputBuffer。
+    // 它不需要任何特殊属性，它的“变现”特权将在 Controller 的多态判定中体现。
+}
+// ==========================================
+// 【新增特殊核心】：市场采购终端 (Market Importer)
+// 专门用于消耗资金，无中生有地生成基础原材料。
+// ==========================================
+public class ImporterCoreData : MachineCoreData
+{
+    // 采购终端特有属性：它需要知道自己到底在买什么
+    public ItemDefinition TargetItem; 
+    
+    // 进货所需的基础时间（默认 1 秒，受机箱多倍速影响）
+    public float ImportTime = 1.0f; 
+}

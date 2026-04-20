@@ -27,15 +27,11 @@ public class InteractionController : MonoBehaviour
     [Header("视觉预制体")]
     public GameObject BeltPrefab;
     public GameObject ItemPrefab;
-
-    /*
-    // 26.4.4 此两份配置将移动到UI管理器
-    public Sprite CoreSprite;         // 核心贴图
-    public Sprite DefaultModuleSprite;// 普通模块贴图
-    */
     public Sprite InputPortSprite;    // 输入匣贴图
     public Sprite OutputPortSprite;   // 输出匣贴图
 
+    [Tooltip("拖入一个带有 TextMeshPro 和 FloatingTextVisual 脚本的预制体")]
+    public GameObject FloatingTextPrefab;
 
     private Dictionary<Vector2Int, GameObject> _spawnedBelts = new Dictionary<Vector2Int, GameObject>();
     private Dictionary<ItemData, GameObject> _spawnedItems = new Dictionary<ItemData, GameObject>();
@@ -44,7 +40,7 @@ public class InteractionController : MonoBehaviour
     public ItemDefinition TestSpawnItem; // 测试按 I 键生成的物品 (拖入铁矿)
     public RecipeDefinition TestRecipe;  // 测试用的核心配方 (拖入熔炼配方)
     public MachineShellProfile TestShellProfile;    //测试机器外壳
-
+    public ItemDefinition TestImportItem; // 测试用的采购目标（拖入铁矿石）
 
 #endregion
 
@@ -743,7 +739,27 @@ public class InteractionController : MonoBehaviour
             _spawnedItems.Remove(item);
         }
     }
+    // ==========================================
+    // 供核心逻辑层调用的：生成大世界跳字表现
+    // ==========================================
+    public void SpawnFloatingText(string text, Vector2Int gridPos, Color color)
+    {
+        if (FloatingTextPrefab == null) return;
 
+        // 将逻辑网格坐标转为大世界物理坐标
+        Vector2 exactPos = GridManager.Instance.GridToWorldPosition(gridPos);
+        
+        // 稍微加一点随机偏移，防止多个跳字完全重叠在一起
+        float randomOffsetX = UnityEngine.Random.Range(-0.2f, 0.2f);
+        Vector3 spawnPos = new Vector3(exactPos.x + randomOffsetX, exactPos.y + 0.5f, -1f); // Z轴靠前防止被遮挡
+
+        GameObject textObj = Instantiate(FloatingTextPrefab, spawnPos, Quaternion.identity);
+        FloatingTextVisual visual = textObj.GetComponent<FloatingTextVisual>();
+        if (visual != null)
+        {
+            visual.Init(text, color);
+        }
+    }
 #endregion
 
 }

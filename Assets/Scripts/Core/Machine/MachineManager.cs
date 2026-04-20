@@ -93,6 +93,29 @@ public class MachineManager : MonoBehaviour
             }
         }
 
+        // ==========================================
+        // 【第六重锁】：经济终端 I/O 防呆锁
+        // ==========================================
+        if (module is OutputPortData && shell.MainCore is ExporterCoreData)
+        {
+            Debug.LogWarning("[放置失败] 交付仓库（市场黑洞）不需要也不能安装向外吐东西的【输出匣】！");
+            return false;
+        }
+        if (module is ExporterCoreData && shell.OutputPorts.Count > 0)
+        {
+            Debug.LogWarning("[放置失败] 机箱内已存在【输出匣】，无法将其改装为交付仓库！");
+            return false;
+        }
+        if (module is InputPortData && shell.MainCore is ImporterCoreData)
+        {
+            Debug.LogWarning("[放置失败] 市场采购终端（源泉）不需要也不能安装吃东西的【输入匣】！");
+            return false;
+        }
+        if (module is ImporterCoreData && shell.InputPorts.Count > 0)
+        {
+            Debug.LogWarning("[放置失败] 机箱内已存在【输入匣】，无法将其改装为市场采购终端！");
+            return false;
+        }
         return true; // 恭喜，全部校验通过！
     }
 
@@ -257,42 +280,156 @@ public class MachineManager : MonoBehaviour
             MachineCoreData core = shell.MainCore;
 
             // ------------------------------------
-            // 阶段 1：多队列并发加工引擎 (Process)
+            // 阶段 1：核心处理引擎 (Process 分流)
             // ------------------------------------
-            for (int j = 0; j < core.ActiveQueues.Count; j++)
+            
+            // 【新增分支 A】：如果是交付仓库，执行瞬间吞噬变现逻辑
+            if (core is ExporterCoreData exporter)
             {
-                ProcessingQueue queue = core.ActiveQueues[j];
-
-                
-                
-                //===================================
-
-                if (queue.CurrentRecipe != null)
+                long tickEarnings = 0;
+                // 扁平化遍历仓库的接收队列
+                for (int j = 0; j < exporter.ActiveQueues.Count; j++)
                 {
-                    // 校验：当前这条流水线的原料够不够？产物区还有没有空位？
-                    if (HasEnoughInputs(queue, queue.CurrentRecipe) && queue.OutputBuffer.Count < queue.MaxBufferSize)
+                    ProcessingQueue queue = exporter.ActiveQueues[j];
+                    if (queue.InputBuffer.Count > 0)
                     {
+                        // 累加本次 Tick 吃掉的所有物品的价值
+                        for (int k = 0; k < queue.InputBuffer.Count; k++)
+                        {
+                            if (queue.InputBuffer[k].Definition != null)
+                            {
+                                tickEarnings += queue.InputBuffer[k].Definition.BasePrice;
+                            }
+                        }
+                        // 【纯数据层原子操作】：瞬间清空肚子里所有的实体，释放内存！
+                        queue.InputBuffer.Clear(); 
+                    }
+                }
 
-                        // 🔴 探针 C：检查进度条是否在正常推进
-                        Debug.Log($"[探针C] {shell.ShellID} 原料充足，正在加工！当前进度: {queue.ProcessingProgress} / {queue.CurrentRecipe.ProcessingTime}");
-                        // 进度 = 基础时间流逝(tickDelta) * 机器当前的加速倍率
+                // 统一结算当前 Tick 的收益，呼叫全局经济系统
+                if (tickEarnings > 0 && EconomyManager.Instance != null)
+                {
+                    EconomyManager.Instance.AddFunds(tickEarnings);
+                    // 探针：确认系统收到钱了
+                    Debug.Log($"[经济系统] 交付仓库成功处理订单，入账: +${tickEarnings}！当前总资金: {EconomyManager.Instance.EconomyData.Funds}");
+                    // 【表现层挂钩】：在机箱的中心点生成绿色加钱跳字！
+                    if (InteractionController.Instance != null)
+                    {
+                        Vector2Int centerPos = new Vector2Int(shell.Bounds.xMin + shell.Bounds.width / 2, shell.Bounds.yMin + shell.Bounds.height / 2);
+                        InteractionController.Instance.SpawnFloatingText($"+ ${tickEarnings}", centerPos, Color.green);
+                    }
+                }
+                
+                // 仓库处理完毕，直接跳过下方的常规配方运算！
+                //continue; 
+            }
+            // 【新增分支 B】：市场采购终端 (ImporterCoreData)
+            /*
+            else if (core is ImporterCoreData importer)
+            {
+                // 如果玩家还没有设置买什么，挂机
+                if (importer.TargetItem == null) 
+                {
+                    Debug.Log($"[系统提示]未设置购买项,挂机中");
+                    continue; 
+                }
+
+                // 采购终端只需要用第 0 条队列来做进货缓冲
+                if (importer.ActiveQueues.Count > 0)
+                {
+                    ProcessingQueue queue = importer.ActiveQueues[0];
+
+                    // 【防死锁 1】：外面传送带堵车，肚子里装满了，暂停进货，保护玩家资金！
+                    if (queue.OutputBuffer.Count < queue.MaxBufferSize)
+                    {
+                        // 推进进货进度条 (享受机壳的加速 Buff)
                         queue.ProcessingProgress += tickDelta * shell.CurrentStats.SpeedMultiplier;
 
-                        // 进度条满了，完成加工
-                        if (queue.ProcessingProgress >= queue.CurrentRecipe.ProcessingTime) 
+                        // 进度满了，尝试向经济中心发起扣款请求
+                        if (queue.ProcessingProgress >= importer.ImportTime)
                         {
-                            ConsumeInputs(queue, queue.CurrentRecipe);
-                            ProduceOutputs(queue, queue.CurrentRecipe);
-                            queue.ProcessingProgress = 0f; // 进度归零
-                            
-                            // 提示：在大规模压测时，建议注释此行以节约 I/O 性能
-                            // Debug.Log($"[{shell.ShellID}] 某条流水线已完成【{queue.CurrentRecipe.DisplayName}】加工！");
+                            if (EconomyManager.Instance != null && EconomyManager.Instance.HasEnoughFunds(importer.TargetItem.BasePrice))
+                            {
+                                // 【原子操作】：扣款 -> 生成实体 -> 重置进度
+                                EconomyManager.Instance.ConsumeFunds(importer.TargetItem.BasePrice);
+                                queue.OutputBuffer.Add(new ItemData(importer.TargetItem));
+                                queue.ProcessingProgress = 0f;
+
+                                // 探针：观察进货情况
+                                Debug.Log($"[市场采购] 购入 {importer.TargetItem.DisplayName}，扣款 ${importer.TargetItem.BasePrice}。余额: {EconomyManager.Instance.EconomyData.Funds}");
+                            }
+                            else
+                            {
+                                // 【防死锁 2】：玩家破产了！进度条卡在 100% 待机，等有钱了下一帧直接买，不浪费时间。
+                                queue.ProcessingProgress = importer.ImportTime;
+                            }
                         }
                     }
-                    else
+                }
+                
+                continue; // 处理完毕，跳过常规配方
+            }*/
+            else if (core is ImporterCoreData importer)
+            { 
+                // 采购终端只需要用第 0 条队列来做进货缓冲
+                if (importer.TargetItem != null && importer.ActiveQueues.Count > 0)
+                {
+                    ProcessingQueue queue = importer.ActiveQueues[0];
+                    
+                    // 确保输出区没满才继续买
+                    if (queue.OutputBuffer.Count < queue.MaxBufferSize)
                     {
-                        // 原料不足或产物堆积，该队列进度清零/暂停
-                        queue.ProcessingProgress = 0f; 
+                        queue.ProcessingProgress += tickDelta * shell.CurrentStats.SpeedMultiplier;
+                        // 进度满了，尝试向经济中心发起扣款请求
+                        if (queue.ProcessingProgress >= importer.ImportTime)
+                        {
+                            if (EconomyManager.Instance != null && EconomyManager.Instance.HasEnoughFunds(importer.TargetItem.BasePrice))
+                            {
+                                // 扣款 -> 生成实体 -> 重置进度
+                                EconomyManager.Instance.ConsumeFunds(importer.TargetItem.BasePrice);
+                                queue.OutputBuffer.Add(new ItemData(importer.TargetItem));
+                                queue.ProcessingProgress = 0f;
+                                // 【表现层挂钩】：在机箱的中心点生成红色扣钱跳字！
+                                if (InteractionController.Instance != null)
+                                {
+                                    Vector2Int centerPos = new Vector2Int(shell.Bounds.xMin + shell.Bounds.width / 2, shell.Bounds.yMin + shell.Bounds.height / 2);
+                                    InteractionController.Instance.SpawnFloatingText($"- ${importer.TargetItem.BasePrice}", centerPos, new Color(1f, 0.3f, 0.3f));
+                                }
+                            }
+                            else
+                            {
+                                // 没钱了，进度停滞等待
+                                queue.ProcessingProgress = importer.ImportTime;
+                            }
+                        }
+                    }
+                }
+                //绝对不能写 continue，它需要走到阶段 2 把买到的东西吐出来！
+            }
+            // 【常规分支 C】：普通的加工机器，执行原有的配方驱动逻辑
+            else 
+            {
+                for (int j = 0; j < core.ActiveQueues.Count; j++)
+                {
+                    ProcessingQueue queue = core.ActiveQueues[j];
+
+                    if (queue.CurrentRecipe != null)
+                    {
+                        // ... 你原本写好的 HasEnoughInputs 和进度条推进逻辑保持不变 ...
+                        if (HasEnoughInputs(queue, queue.CurrentRecipe) && queue.OutputBuffer.Count < queue.MaxBufferSize)
+                        {
+                            queue.ProcessingProgress += tickDelta * shell.CurrentStats.SpeedMultiplier;
+                            if (queue.ProcessingProgress >= queue.CurrentRecipe.ProcessingTime) 
+                            {
+                                ConsumeInputs(queue, queue.CurrentRecipe);
+                                ProduceOutputs(queue, queue.CurrentRecipe);
+                                queue.ProcessingProgress = 0f; 
+                            }
+                        }
+                        else
+                        {
+                            queue.ProcessingProgress = 0f; 
+                        }
                     }
                 }
             }
