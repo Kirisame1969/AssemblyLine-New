@@ -77,7 +77,7 @@ public class SimulationController : MonoBehaviour
         if (CurrentTick > 0 && CurrentTick % TicksPerCycle == 0)
         {
             CurrentCycle++;
-            Debug.Log($"【系统通知】太阳升起！进入第 {CurrentCycle} 周期 (Tick: {CurrentTick})");
+            Debug.Log($"【系统通知】进入第 {CurrentCycle} 周期 (Tick: {CurrentTick})");
             
             // 触发事件通知所有订阅者
             OnNewCycleStarted?.Invoke(CurrentCycle);
@@ -132,11 +132,6 @@ public class SimulationController : MonoBehaviour
                             }
                             Debug.Log($"[诊断] 确认是输入匣！当前机箱是否有核心: {hasCore}。 核心是否已满: {isFull}");
                         }
-                    }
-                    else
-                    {
-                        // 连模块都没检测到
-                        Debug.Log($"[诊断] 前方坐标 {nextPos} 没有检测到任何机器模块！(可能是坐标错位)");
                     }
                     // ====================================================
 
