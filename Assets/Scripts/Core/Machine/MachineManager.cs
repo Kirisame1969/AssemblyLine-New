@@ -323,52 +323,7 @@ public class MachineManager : MonoBehaviour
                 // 仓库处理完毕，直接跳过下方的常规配方运算！
                 //continue; 
             }
-            // 【新增分支 B】：市场采购终端 (ImporterCoreData)
-            /*
-            else if (core is ImporterCoreData importer)
-            {
-                // 如果玩家还没有设置买什么，挂机
-                if (importer.TargetItem == null) 
-                {
-                    Debug.Log($"[系统提示]未设置购买项,挂机中");
-                    continue; 
-                }
-
-                // 采购终端只需要用第 0 条队列来做进货缓冲
-                if (importer.ActiveQueues.Count > 0)
-                {
-                    ProcessingQueue queue = importer.ActiveQueues[0];
-
-                    // 【防死锁 1】：外面传送带堵车，肚子里装满了，暂停进货，保护玩家资金！
-                    if (queue.OutputBuffer.Count < queue.MaxBufferSize)
-                    {
-                        // 推进进货进度条 (享受机壳的加速 Buff)
-                        queue.ProcessingProgress += tickDelta * shell.CurrentStats.SpeedMultiplier;
-
-                        // 进度满了，尝试向经济中心发起扣款请求
-                        if (queue.ProcessingProgress >= importer.ImportTime)
-                        {
-                            if (EconomyManager.Instance != null && EconomyManager.Instance.HasEnoughFunds(importer.TargetItem.BasePrice))
-                            {
-                                // 【原子操作】：扣款 -> 生成实体 -> 重置进度
-                                EconomyManager.Instance.ConsumeFunds(importer.TargetItem.BasePrice);
-                                queue.OutputBuffer.Add(new ItemData(importer.TargetItem));
-                                queue.ProcessingProgress = 0f;
-
-                                // 探针：观察进货情况
-                                Debug.Log($"[市场采购] 购入 {importer.TargetItem.DisplayName}，扣款 ${importer.TargetItem.BasePrice}。余额: {EconomyManager.Instance.EconomyData.Funds}");
-                            }
-                            else
-                            {
-                                // 【防死锁 2】：玩家破产了！进度条卡在 100% 待机，等有钱了下一帧直接买，不浪费时间。
-                                queue.ProcessingProgress = importer.ImportTime;
-                            }
-                        }
-                    }
-                }
-                
-                continue; // 处理完毕，跳过常规配方
-            }*/
+            
             else if (core is ImporterCoreData importer)
             { 
                 // 采购终端只需要用第 0 条队列来做进货缓冲
