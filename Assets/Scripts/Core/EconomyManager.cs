@@ -16,6 +16,7 @@ public class EconomyManager : MonoBehaviour
     // ==========================================
     public event Action<long> OnFundsChanged;
     public event Action<long, long> OnCycleFinancialReport; // revenue, expenses
+    public event Action<int> OnTalentPointsChanged; // 新增：天赋点变动委托
 
     // ==========================================
     // 简易方案常量：动态维护费基准值
@@ -32,6 +33,7 @@ public class EconomyManager : MonoBehaviour
     private void Start()
     {
         OnFundsChanged?.Invoke(EconomyData.Funds);
+        OnTalentPointsChanged?.Invoke(EconomyData.TalentPoints);
 
         // 【第二步核心】：挂载到心脏起搏器！订阅周期交替事件
         if (SimulationController.Instance != null)
@@ -77,7 +79,25 @@ public class EconomyManager : MonoBehaviour
         OnFundsChanged?.Invoke(EconomyData.Funds);
         return true;
     }
+    public void AddTalentPoints(int amount)
+    {
+        if (amount <= 0) return;
+        EconomyData.TalentPoints += amount;
+        OnTalentPointsChanged?.Invoke(EconomyData.TalentPoints);
+    }
 
+    public bool HasEnoughTalentPoints(int amount)
+    {
+        return EconomyData.TalentPoints >= amount;
+    }
+
+    public bool ConsumeTalentPoints(int amount)
+    {
+        if (amount <= 0 || !HasEnoughTalentPoints(amount)) return false;
+        EconomyData.TalentPoints -= amount;
+        OnTalentPointsChanged?.Invoke(EconomyData.TalentPoints);
+        return true;
+    }
     public void ForceDeductFunds(long amount)
     {
         if (amount <= 0) return;
