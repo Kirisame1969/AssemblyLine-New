@@ -1,6 +1,7 @@
 using System;
 using UnityEngine;
 using System.Collections.Generic;
+using AssemblyLine.Data.Machine;
 
 // 定义时间流速枚举 (利用整型作为乘数倍率)
 public enum TimeSpeed { Paused = 0, Normal = 1, Fast = 2, SuperFast = 5 }

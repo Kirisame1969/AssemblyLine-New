@@ -1,5 +1,6 @@
 using UnityEngine;
 using System.Collections.Generic;
+using AssemblyLine.Data.Machine;
 
 // 定义单个格子在 UI 面板中的视觉配置
 [System.Serializable]

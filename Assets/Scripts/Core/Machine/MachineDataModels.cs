@@ -1,3 +1,4 @@
+/*
 using System;
 using System.Collections.Generic;
 using UnityEngine;
@@ -297,3 +298,4 @@ public class ImporterCoreData : MachineCoreData
     // 进货所需的基础时间（默认 1 秒，受机箱多倍速影响）
     public float ImportTime = 1.0f; 
 }
+*/

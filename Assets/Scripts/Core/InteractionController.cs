@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.EventSystems;
 using System.Collections.Generic;
+using AssemblyLine.Data.Machine;
 
 public class InteractionController : MonoBehaviour
 {
@@ -35,7 +36,18 @@ public class InteractionController : MonoBehaviour
 
     private Dictionary<Vector2Int, GameObject> _spawnedBelts = new Dictionary<Vector2Int, GameObject>();
     private Dictionary<ItemData, GameObject> _spawnedItems = new Dictionary<ItemData, GameObject>();
-
+    // ==========================================
+    // 【核心修复】：大世界机箱视觉层字典（实现绝对 MVC 隔离）
+    // 替代了原先直接写在 MachineShellData 里的 GameObject 列表
+    // ==========================================
+    private class ShellWorldVisuals
+    {
+        public List<GameObject> FloorQuads = new List<GameObject>();
+        public List<GameObject> PortOverlays = new List<GameObject>();
+    }
+    // 这个字典用于记录：哪个机箱数据，对应着大世界里的哪些贴图物体
+    private Dictionary<MachineShellData, ShellWorldVisuals> _worldShellVisuals = new Dictionary<MachineShellData, ShellWorldVisuals>();
+    
     [Header("配置测试")]
     public ItemDefinition TestSpawnItem; // 测试按 I 键生成的物品 (拖入铁矿)
     public RecipeDefinition TestRecipe;  // 测试用的核心配方 (拖入熔炼配方)
@@ -201,23 +213,15 @@ public class InteractionController : MonoBehaviour
                     }
                 }
             }
-            // (注：由于我们机箱的地板现在是动态生成的Quad且未集中保存，目前画面上的灰底板暂不会消失。
-            // 未来我们会建立一个 MachineVisualManager 统一处理视觉销毁)
-            //foreach (var v in shell.FloorVisuals) Destroy(v);
-            //这里可能是专门用来拆除机器外壳的？
-            // 销毁画面上的视觉底板
-            foreach (GameObject visualQuad in shell.FloorVisuals)
-            {
-                Destroy(visualQuad);
-            }
-            shell.FloorVisuals.Clear();
 
-            // 将机箱内部所有的模块贴图一并销毁,这里保留,用于销毁I/O匣
-            foreach (GameObject modVisual in shell.ModuleVisuals)
+            // 这里可能是专门用来拆除机器外壳的？
+            // 通过视觉字典查找并销毁关联的大世界模型
+            if (_worldShellVisuals.TryGetValue(shell, out ShellWorldVisuals visuals))
             {
-                Destroy(modVisual);
+                foreach (GameObject v in visuals.FloorQuads) Destroy(v);
+                foreach (GameObject v in visuals.PortOverlays) Destroy(v);
+                _worldShellVisuals.Remove(shell);
             }
-            shell.ModuleVisuals.Clear();
 
             MachineManager.Instance.AllActiveShells.Remove(shell);
             //移除机箱在机器管理器里的注册
@@ -456,10 +460,9 @@ public class InteractionController : MonoBehaviour
 
                 // ====================================================
                 // 【终极防呆补丁】：强制初始化内部容器，防止底层漏写导致 NRE
+                // （注意：已剔除视觉表现层的初始化，完全交给 MVC 视觉字典管理）
                 // ====================================================
-                if (newShell.FloorVisuals == null) newShell.FloorVisuals = new List<GameObject>();
                 if (newShell.Modules == null) newShell.Modules = new List<MachineModuleData>();
-                if (newShell.ModuleVisuals == null) newShell.ModuleVisuals = new List<GameObject>();
                 if (newShell.InputPorts == null) newShell.InputPorts = new List<InputPortData>();
                 if (newShell.OutputPorts == null) newShell.OutputPorts = new List<OutputPortData>();
                 
@@ -529,6 +532,9 @@ public class InteractionController : MonoBehaviour
     // ==========================================
     private void PlaceShellInWorld(MachineShellData shell)
     {
+        // 确保字典中有此机箱的配置
+        if (!_worldShellVisuals.ContainsKey(shell)) _worldShellVisuals[shell] = new ShellWorldVisuals();
+
         for (int x = 0; x < shell.Bounds.width; x++)
         {
             for (int y = 0; y < shell.Bounds.height; y++)
@@ -536,57 +542,29 @@ public class InteractionController : MonoBehaviour
                 Vector2Int worldPos = new Vector2Int(shell.Bounds.xMin + x, shell.Bounds.yMin + y);
                 Vector2Int localPos = new Vector2Int(x, y);
 
-                // 1. 写入数据：标记该网格属于这个机壳
                 GridCell cell = GridManager.Instance.GetGridCell(worldPos);
-                if (cell != null)
-                {
-                    cell.ShellRegion = shell;
-                }
+                if (cell != null) cell.ShellRegion = shell;
 
-                // 2. 生成永久的视觉底板 (这里用简单的颜色方块代替未来的贴图)
-                // 【修复】：将网格坐标转换为真实的世界坐标轴，再赋值给生成物
                 Vector2 exactWorldPos = GridManager.Instance.GridToWorldPosition(worldPos);
-
                 GameObject floorQuad = GameObject.CreatePrimitive(PrimitiveType.Quad);
-
-                // 【新增】：把生成的肉体存进数据里！
-                shell.FloorVisuals.Add(floorQuad);
-                
-                // 使用转换后的 exactWorldPos，而不是直接用 worldPos.x
                 floorQuad.transform.position = new Vector3(exactWorldPos.x, exactWorldPos.y, 0); 
-                Destroy(floorQuad.GetComponent<Collider>()); // 去掉碰撞体
+                Destroy(floorQuad.GetComponent<Collider>()); 
                 
                 Renderer r = floorQuad.GetComponent<Renderer>();
                 r.material = new Material(Shader.Find("Sprites/Default"));
                 
-                // 给死区标记黑色，可用区域标记深灰色
-                if (shell.DeadCells.Contains(localPos))
-                {
-                    r.material.color = new Color(0.1f, 0.1f, 0.1f, 1f); // 黑色死区
-                }
-                else
-                {
-                    r.material.color = new Color(0.4f, 0.4f, 0.4f, 0.6f); // 灰色可用底板
-                }
-                
-                // （注意：在实际项目中，你应该把这些生成的视觉对象放在一个统一的父节点下管理，
-                // 或者保存在 Shell 数据结构里，方便未来拆除机箱时一起销毁。）
+                if (shell.DeadCells.Contains(localPos)) r.material.color = new Color(0.1f, 0.1f, 0.1f, 1f); 
+                else r.material.color = new Color(0.4f, 0.4f, 0.4f, 0.6f); 
 
-                
-                
+                // 【关键修复】：注册进视觉层字典，不碰数据层
+                _worldShellVisuals[shell].FloorQuads.Add(floorQuad);
             }
         }
 
-        // ==========================================
-        // 2. 【修复】：把注册代码移到循环外面！整个机箱只注册 1 次！
-        // 顺便加上 Contains 检查，防止以后任何误操作导致的重复注册
-        // ==========================================
         if (!MachineManager.Instance.AllActiveShells.Contains(shell))
         {
             MachineManager.Instance.AllActiveShells.Add(shell);
-            Debug.Log($"[系统] 新机箱已注册！当前世界上共有 {MachineManager.Instance.AllActiveShells.Count} 台机器在运转。");
         }
-
     }
     #endregion
 
@@ -664,8 +642,9 @@ public class InteractionController : MonoBehaviour
 
     public void SpawnPortOverlayVisual(MachineShellData shell, MachineModuleData module)
     {
-        // 只有输入匣和输出匣需要在大世界上“留痕”
         if (!(module is InputPortData) && !(module is OutputPortData)) return;
+
+        if (!_worldShellVisuals.ContainsKey(shell)) _worldShellVisuals[shell] = new ShellWorldVisuals();
 
         foreach (Vector2Int localPos in module.GetOccupiedLocalCells())
         {
@@ -687,10 +666,11 @@ public class InteractionController : MonoBehaviour
                 UpdateVisualRotation(modVisual, outputPort.FacingDir);
             }
 
-            shell.ModuleVisuals.Add(modVisual);
+            // 【关键修复】：存入视觉映射字典
+            _worldShellVisuals[shell].PortOverlays.Add(modVisual);
         }
     }
-
+    
     // ==========================================
     // 【Phase 4 新增】：刷新大世界机箱端口的视觉表现
     // 供 UI 面板放置/拆除模块后调用
@@ -699,14 +679,13 @@ public class InteractionController : MonoBehaviour
     {
         if (shell == null) return;
 
-        // 1. 清理该机箱旧的大世界模块视觉贴图
-        foreach (var visual in shell.ModuleVisuals)
+        // 【关键修复】：根据字典清理旧视觉，然后重绘
+        if (_worldShellVisuals.TryGetValue(shell, out ShellWorldVisuals visuals))
         {
-            if (visual != null) Destroy(visual);
+            foreach (var v in visuals.PortOverlays) if (v != null) Destroy(v);
+            visuals.PortOverlays.Clear();
         }
-        shell.ModuleVisuals.Clear();
 
-        // 2. 遍历当前机箱底层真实的数据，重新生成 I/O 匣子的印记
         foreach (var module in shell.Modules)
         {
             SpawnPortOverlayVisual(shell, module);

@@ -1,5 +1,6 @@
 using UnityEngine;
 using System.Collections.Generic;
+using AssemblyLine.Data.Machine;
 
 public enum ModuleLogicalType
 {

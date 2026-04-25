@@ -1,10 +1,14 @@
 using System.Collections.Generic;
 using UnityEngine;
+using AssemblyLine.Data.Machine;
 
 public class MachineManager : MonoBehaviour
 {
     public static MachineManager Instance { get; private set; }
 
+    // 记录世界上所有的机箱，方便我们在 Update 里遍历它们让它们工作
+    public List<MachineShellData> AllActiveShells = new List<MachineShellData>();
+    
     private void Awake()
     {
         if (Instance == null) Instance = this;
@@ -22,35 +26,17 @@ public class MachineManager : MonoBehaviour
         // 【第一重锁 & 第二重锁 & 第三重锁】：遍历所有占用的格子
         foreach (Vector2Int localPos in localCells)
         {
-            // 1. 越界锁：模块是否超出了机箱的物理尺寸？
             if (localPos.x < 0 || localPos.x >= shell.Bounds.width ||
-                localPos.y < 0 || localPos.y >= shell.Bounds.height)
-            {
-                Debug.LogWarning($"[放置失败] 模块超出了机箱边界: {localPos}");
-                return false;
-            }
+                localPos.y < 0 || localPos.y >= shell.Bounds.height) return false;
 
-            // 2. 死区锁：该格子是否为机箱的坏死区/承重柱？
-            if (shell.DeadCells.Contains(localPos))
-            {
-                Debug.LogWarning($"[放置失败] 触碰机箱绝对死区: {localPos}");
-                return false;
-            }
+            if (shell.DeadCells.Contains(localPos)) return false;
 
-            // 3. 占用锁：该格子是否已经被其他模块占用了？
-            // 将局部坐标转换为大世界网格坐标
             Vector2Int worldPos = new Vector2Int(shell.Bounds.xMin + localPos.x, shell.Bounds.yMin + localPos.y);
             GridCell cell = GridManager.Instance.GetGridCell(worldPos);
             
-            if (cell == null || cell.OccupyingModule != null)
-            {
-                Debug.LogWarning($"[放置失败] 世界网格位置已被占用: {worldPos}");
-                return false;
-            }
+            if (cell == null || cell.OccupyingModule != null) return false;
         }
-        // ==========================================
-        // 【第四重锁】：便当盒隔断锁
-        // ==========================================
+        // 4. 机箱隔断墙阻挡校验
         // 获取模块作为一个整体，内部必须连通的接缝
         List<InternalWall> requiredConnections = module.GetRequiredInternalConnections();
         foreach (InternalWall conn in requiredConnections)
@@ -63,9 +49,7 @@ public class MachineManager : MonoBehaviour
             }
         }
 
-        // ==========================================
-        // 【第五重锁】：I/O 匣子的边缘与朝向锁
-        // ==========================================
+        // 5. I/O 端口边缘与朝向校验 (必须贴边且开口朝外)
         if (module is InputPortData || module is OutputPortData)
         {
             Vector2Int pos = module.LocalBottomLeft; // I/O 匣子是 1x1，只看这一个坐标
@@ -93,9 +77,7 @@ public class MachineManager : MonoBehaviour
             }
         }
 
-        // ==========================================
-        // 【第六重锁】：经济终端 I/O 防呆锁
-        // ==========================================
+        // 6. 市场经济终端业务逻辑防呆校验
         if (module is OutputPortData && shell.MainCore is ExporterCoreData)
         {
             Debug.LogWarning("[放置失败] 交付仓库（市场黑洞）不需要也不能安装向外吐东西的【输出匣】！");
@@ -116,26 +98,29 @@ public class MachineManager : MonoBehaviour
             Debug.LogWarning("[放置失败] 机箱内已存在【输入匣】，无法将其改装为市场采购终端！");
             return false;
         }
-        return true; // 恭喜，全部校验通过！
+        return true; // 全部校验通过
     }
 
     // ==========================================
     // 动作执行：正式将模块写入数据底座
     // ==========================================
+    // ==========================================
+    // 动作执行：注册模块至数据底座
+    // ==========================================
     public void PlaceModule(MachineShellData shell, MachineModuleData module)
     {
         if (!CanPlaceModule(shell, module)) return;
 
-        // 1. 建立归属关系
+        // 1. 建立数据层父子归属
         module.ParentShell = shell;
         shell.Modules.Add(module);
 
-        // 2. 局域网路由注册
+        // 2. 路由快速索引注册
         if (module is MachineCoreData core) shell.MainCore = core;
         else if (module is InputPortData inputPort) shell.InputPorts.Add(inputPort);
         else if (module is OutputPortData outputPort) shell.OutputPorts.Add(outputPort);
 
-        // 3. 将数据写入大世界网格
+        // 3. 占用数据写入大世界网格
         List<Vector2Int> localCells = module.GetOccupiedLocalCells();
         foreach (Vector2Int localPos in localCells)
         {
@@ -144,13 +129,11 @@ public class MachineManager : MonoBehaviour
             if (cell != null) cell.OccupyingModule = module;
         }
 
-        // ==========================================
-        // 【关键】：放置完毕，触发全机箱的增益重算！
-        // ==========================================
+        // 4. 触发机箱动态属性重算
         shell.RecalculateStats();
-
         Debug.Log($"[系统提示] 成功放置模块！当前模块数: {shell.Modules.Count}");
     }
+
 
     // ==========================================
     // 【新增】：模块拆卸逻辑 (为了之后的 UI 右键拆卸准备)
@@ -192,8 +175,7 @@ public class MachineManager : MonoBehaviour
 
 
     // ==========================================
-    // 【新增】：提供给 UI 层的标准配方配置接口
-    // 严格遵循 MVC，仅修改纯数据，不涉及任何表现层组件
+    // 提供给 UI 层的标准配方配置接口
     // ==========================================
     public void SetRecipe(MachineShellData shell, int queueIndex, RecipeDefinition recipe)
     {
@@ -210,36 +192,10 @@ public class MachineManager : MonoBehaviour
             Debug.Log($"[数据层] 成功为机箱 {shell.ShellID} 的流水线 [{queueIndex}] 挂载配方: {(recipe != null ? recipe.DisplayName : "空")}");
         }
     }
-    // ==========================================
-    // 全局机器数据缓存
-    // ==========================================
-    // 记录世界上所有的机箱，方便我们在 Update 里遍历它们让它们工作
-    public List<MachineShellData> AllActiveShells = new List<MachineShellData>();
 
     // ==========================================
-    // 供外部传送带调用的“喂食”接口 (多线程版)
+    // 物流互交：供传送带调用的输入接口
     // ==========================================
-    /*
-    public bool TryIngestItem(GridCell targetCell, ItemData item)
-    {
-        if (targetCell.OccupyingModule is InputPortData inputPort)
-        {
-            MachineShellData shell = inputPort.ParentShell;
-            if (shell != null && shell.MainCore != null)
-            {
-                // 【修复】：遍历机器所有的处理队列，寻找第一个有空位的肚子
-                foreach (ProcessingQueue queue in shell.MainCore.ActiveQueues)
-                {
-                    if (queue.InputBuffer.Count < queue.MaxBufferSize)
-                    {
-                        queue.InputBuffer.Add(item);
-                        return true; // 成功吞下！
-                    }
-                }
-            }
-        }
-        return false; // 吞噬失败（没孔、没核心、或者所有队列肚子都满了）
-    }*/
     public bool TryIngestItem(GridCell targetCell, ItemData item)
     {
         // 1. 确认该格子确实是一个输入匣
@@ -276,7 +232,8 @@ public class MachineManager : MonoBehaviour
         for (int i = 0; i < AllActiveShells.Count; i++)
         {
             MachineShellData shell = AllActiveShells[i];
-            if (shell.MainCore == null) continue; // 没装核心的空壳子不工作
+            if (shell.MainCore == null) continue; 
+            // 没装核心的空壳子不工作
             MachineCoreData core = shell.MainCore;
 
             // ------------------------------------
@@ -447,6 +404,97 @@ public class MachineManager : MonoBehaviour
         }
     }
 
+    // ==========================================
+    // 配方引擎内部数据运算方法
+    // ==========================================
+    private bool HasEnoughInputs(ProcessingQueue queue, RecipeDefinition recipe)
+    {
+        foreach (var req in recipe.Inputs)
+        {
+            int count = 0;
+            foreach (var item in queue.InputBuffer)
+            {
+                if (item.Definition == req.Item) count++;
+            }
+            if (count < req.Amount) return false; 
+        }
+        return true;
+    }
+
+    private void ConsumeInputs(ProcessingQueue queue, RecipeDefinition recipe)
+    {
+        foreach (var req in recipe.Inputs)
+        {
+            int removedCount = 0;
+            for (int i = queue.InputBuffer.Count - 1; i >= 0; i--)
+            {
+                if (queue.InputBuffer[i].Definition == req.Item)
+                {
+                    queue.InputBuffer.RemoveAt(i);
+                    removedCount++;
+                    if (removedCount == req.Amount) break; 
+                }
+            }
+        }
+    }
+
+    private void ProduceOutputs(ProcessingQueue queue, RecipeDefinition recipe)
+    {
+        foreach (var outDef in recipe.Outputs)
+        {
+            for (int i = 0; i < outDef.Amount; i++)
+            {
+                queue.OutputBuffer.Add(new ItemData(outDef.Item));
+            }
+        }
+    }
+
+    // ==========================================
+    // 坐标与空间映射辅助计算
+    // ==========================================
+    public bool TryGetExternalPosition(MachineShellData shell, InputPortData port, out Vector2Int externalPos)
+    {
+        return CalculateExternalPos(shell, port.LocalBottomLeft, port.FacingDir, out externalPos);
+    }
+
+    public bool TryGetExternalPosition(MachineShellData shell, OutputPortData port, out Vector2Int externalPos)
+    {
+        return CalculateExternalPos(shell, port.LocalBottomLeft, port.FacingDir, out externalPos);
+    }
+
+    private bool CalculateExternalPos(MachineShellData shell, Vector2Int localAnchor, Direction facingDir, out Vector2Int externalPos)
+    {
+        externalPos = Vector2Int.zero;
+        if (shell == null) return false;
+
+        Vector2Int shellGlobalOrigin = shell.Bounds.position;
+        Vector2Int portGlobalPos = shellGlobalOrigin + localAnchor;
+        Vector2Int dirOffset = GetDirectionOffset(facingDir);
+        
+        externalPos = portGlobalPos + dirOffset;
+
+        // 若计算出的抛出点处于机箱本体占用范围内，视为向内死锁摆放，中断吞吐逻辑
+        if (shell.Bounds.Contains(externalPos)) return false; 
+
+        return true;
+    }
+
+    private Vector2Int GetDirectionOffset(Direction dir)
+    {
+        switch (dir)
+        {
+            case Direction.Up:    return new Vector2Int(0, 1);
+            case Direction.Right: return new Vector2Int(1, 0);
+            case Direction.Down:  return new Vector2Int(0, -1);
+            case Direction.Left:  return new Vector2Int(-1, 0);
+            default:              return Vector2Int.zero;
+        }
+    }
+}
+
+
+
+/*
     // 辅助工具：根据方向获取前方一格的坐标
     private Vector2Int GetForwardPosition(Vector2Int pos, Direction dir)
     {
@@ -576,7 +624,6 @@ public class MachineManager : MonoBehaviour
             default:              return Vector2Int.zero;
         }
     }
-    
+    */
 
 
-}
