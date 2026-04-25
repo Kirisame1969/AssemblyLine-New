@@ -62,6 +62,28 @@ public class InteractionController : MonoBehaviour
         else Destroy(gameObject);
     }
 
+    // ==========================================
+    // 订阅核心层的数据事件 
+    // ==========================================
+    private void Start()
+    {
+        // 监听物品从逻辑层被移除的事件，并绑定到本脚本的视觉销毁方法上
+        if (SimulationController.Instance != null)
+        {
+            SimulationController.Instance.OnItemLogicRemoved += DestroyItemVisual;
+        }
+    }
+
+    private void OnDestroy()
+    {
+        // 严苛的安全规范：对象销毁时必须注销事件，防止野指针和内存泄漏
+        if (SimulationController.Instance != null)
+        {
+            SimulationController.Instance.OnItemLogicRemoved -= DestroyItemVisual;
+        }
+    }
+    // ==========================================
+
 #region 总控循环 (Update)
     private void Update()
     {
@@ -118,9 +140,15 @@ public class InteractionController : MonoBehaviour
                 // 机箱放置逻辑
                 HandleShellPlacement();
                 break;
-
-           
         }
+
+        // ==========================================
+        // 【新增】：自主数据拉取与渲染 
+        // ==========================================
+        // 无论游戏是否被暂停 (TimeSpeed.Paused)，画面层的 Update 始终运行。
+        // 这确保了即使逻辑层 Tick 停止，玩家拖拽视角时物品贴图依然紧紧吸附在正确的位置。
+        RenderItems();
+        // ==========================================
     }
     #endregion
 

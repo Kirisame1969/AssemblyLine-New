@@ -29,6 +29,9 @@ public class SimulationController : MonoBehaviour
     // 活跃物品名单。系统只关心这里的物品。
     public List<ItemData> ActiveItems = new List<ItemData>(); 
 
+    // 【新增】：当物品由于某种原因（被吞噬、掉落、销毁）从逻辑中移除时触发
+    // 供表现层监听并清理对应的视觉实体
+    public event Action<ItemData> OnItemLogicRemoved;
     
 
     private void Awake()
@@ -51,7 +54,7 @@ public class SimulationController : MonoBehaviour
         }
 
         // 无论是否暂停，画面渲染插值照常进行，确保视觉平滑
-        UpdateItemVisuals();
+        // UpdateItemVisuals();
     }
 
     private void PerformTick()//update中调用
@@ -106,7 +109,7 @@ public class SimulationController : MonoBehaviour
 
                 if (nextCell != null)
                 {
-
+                    /*
                     // ====================================================
                     // 🩺 诊断探针开始：打印前方的物理真实情况
                     // ====================================================
@@ -135,7 +138,7 @@ public class SimulationController : MonoBehaviour
                         }
                     }
                     // ====================================================
-
+                    */
 
 
                     // ====================================================
@@ -153,8 +156,8 @@ public class SimulationController : MonoBehaviour
                             // 2. 物理除名：从活跃移动名单中剔除（因为是倒序遍历，这里 RemoveAt 是绝对安全的）
                             ActiveItems.RemoveAt(i);
 
-                            // 3. 视觉销毁：通知 UI 控制器删掉画面上的精灵贴图
-                            InteractionController.Instance.DestroyItemVisual(item); 
+                            // 仅通知事件，不直接指挥表现层
+                            OnItemLogicRemoved?.Invoke(item);
                             
                             continue; // 成功喂食，立刻跳过当前物品的处理，去处理下一个物品！
                         }
@@ -207,6 +210,7 @@ public class SimulationController : MonoBehaviour
         }
     }
 
+    /*
     // --- 预留给表现层的更新方法 ---
     private void UpdateItemVisuals()
     {
@@ -216,7 +220,7 @@ public class SimulationController : MonoBehaviour
             InteractionController.Instance.RenderItems();
         }
     }
-    
+    */
     // 注册新物品的方法
     public void RegisterItem(ItemData newItem)
     {
