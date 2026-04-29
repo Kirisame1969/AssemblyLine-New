@@ -46,6 +46,12 @@ public class MachineGUIController : MonoBehaviour
     public UITabButton[] TabButtons; 
     public GameObject[] TabPages;
 
+    [Header("仓库库存 UI")]
+    public AssemblyLine.UI.UIWarehousePanel WarehousePanel; // 拖入挂载了此脚本的 TabPages[1] 节点
+    
+    // 【新增】：状态互斥锁，记录当前激活的是哪个分页
+    private int _currentTabIndex = 0;
+
     private void Awake()
     {
         if (Instance == null) Instance = this;
@@ -75,6 +81,14 @@ public class MachineGUIController : MonoBehaviour
         // 暂停游戏大世界时间 (按需)
         SimulationController.Instance.CurrentSpeed = TimeSpeed.Paused;
 
+        // 【新增】：判断是否为仓库，控制 Tab 页权限
+        bool isWarehouse = shell.MainCore is WarehouseCoreData;
+        if (TabButtons.Length > 1) 
+        {
+            // 如果不是仓库，直接隐藏“库存”按钮标签
+            TabButtons[1].gameObject.SetActive(isWarehouse); 
+        }
+
         // 重置 Tab 为初始状态
         SwitchTab(0);
         GenerateGrid();
@@ -86,6 +100,12 @@ public class MachineGUIController : MonoBehaviour
         foreach (var module in shell.Modules)
         {
             SpawnUIModuleVisual(module);
+        }
+
+        // 【新增】：如果是仓库，初始化库存面板数据映射
+        if (isWarehouse && WarehousePanel != null)
+        {
+            WarehousePanel.InitPanel(shell.MainCore as WarehouseCoreData);
         }
     }
 
@@ -240,8 +260,13 @@ public class MachineGUIController : MonoBehaviour
 
         if (Input.GetKeyDown(KeyCode.Escape)) { ClosePanel(); return; }
 
-        HandleModulePlacement();
-        HandleModuleRemoval();
+        // 【关键防御】：只有在“装配视图”(Tab 0) 时，才处理内部大网格的交互！
+        // 防止玩家在“库存视图”点击背包格子时，误把手里的模块塞进了机箱里！
+        if (_currentTabIndex == 0)
+        {
+            HandleModulePlacement();
+            HandleModuleRemoval();
+        }
     }
 
     //处理模块放置
@@ -273,6 +298,12 @@ public class MachineGUIController : MonoBehaviour
                 // 写入 Model 层
                 MachineManager.Instance.PlaceModule(_currentShell, finalModule);
                 
+                // 【新增】：通知 UI 重算网格容量 (如果当前是仓库的话)
+                if (_currentShell.MainCore is WarehouseCoreData && WarehousePanel != null)
+                {
+                    WarehousePanel.SyncGridCapacity();
+                }
+                
                 // 刷新 View 层视觉
                 SpawnUIModuleVisual(finalModule);
                 
@@ -301,6 +332,11 @@ public class MachineGUIController : MonoBehaviour
 
                 // 1. 通知控制层删除数据
                 MachineManager.Instance.RemoveModule(_currentShell, targetModule);
+                // 【新增】：通知 UI 重算网格容量 (如果当前是仓库的话)
+                if (_currentShell.MainCore is WarehouseCoreData && WarehousePanel != null)
+                {
+                    WarehousePanel.SyncGridCapacity();
+                }
 
                 // 2. 表现层根据字典查找到 GameObject 并销毁
                 if (_moduleUIDict.TryGetValue(targetModule, out GameObject uiObj))
@@ -438,6 +474,8 @@ public class MachineGUIController : MonoBehaviour
 
     public void SwitchTab(int targetIndex)
     {
+        _currentTabIndex = targetIndex; // 【关键修改】：记录当前页
+
         for (int i = 0; i < TabButtons.Length; i++) TabButtons[i]?.SetSelectedStatus(i == targetIndex);
         for (int i = 0; i < TabPages.Length; i++) TabPages[i]?.SetActive(i == targetIndex);
     }

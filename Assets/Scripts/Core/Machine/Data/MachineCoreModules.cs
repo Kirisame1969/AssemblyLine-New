@@ -74,4 +74,32 @@ namespace AssemblyLine.Data.Machine
         /// </summary>
         public float ImportTime = 1.0f; 
     }
+
+    /// <summary>
+    /// 仓储核心的数据实体。
+    /// 赋予机箱大容量静态存储的能力。不参与配方加工。
+    /// </summary>
+    public class WarehouseCoreData : MachineCoreData
+    {
+        /// <summary>
+        /// 仓库的深度库存数据。
+        /// </summary>
+        public InventoryData Storage;
+
+        // 玩家在 UI 上设定的全局市场供货优先级 (默认 0)
+        public int MarketPriority = 0; 
+
+        // 该仓库落成时的 Tick 时间戳。用于兜底排序，保证确定的先入先出
+        public ulong BuildTick = 0;
+
+        /// <summary>
+        /// 仓储核心的构造。默认初始化 0 槽位，实际容量将在装配后由 RecalculateStats 动态计算。
+        /// 默认拥有一条 ActiveQueue，用作 I/O 缓冲。
+        /// </summary>
+        public WarehouseCoreData() : base()
+        {
+            Storage = new InventoryData(0);
+        }
+    }
+
 }

@@ -4,6 +4,13 @@ using UnityEngine;
 
 // 作为机器实体的根数据节点。
 // 负责存储机箱的物理边界、死区/隔断墙限制、汇总内部安装的所有模块实例，并维护关键模块（核心、输入输出端口）的路由索引。
+
+/*
+(注意：在 ModuleEffect 的枚举类型 EffectType 中，建议你以后追加一个 AddStorageCapacity，
+并在现有的 RecalculateStats 的 foreach 遍历中对其进行累加 CurrentStats.ExtraStorageCapacity += value。
+这里为了集中精力，我们先聚焦核心逻辑。)
+*/
+
 namespace AssemblyLine.Data.Machine
 {
     /// <summary>
@@ -15,6 +22,7 @@ namespace AssemblyLine.Data.Machine
     {
         public float SpeedMultiplier = 1.0f;
         public int MaxProcessingQueues = 1;
+        public int ExtraStorageCapacity = 0; // 【新增】扩展模块提供的额外容量
 
         /// <summary>
         /// 重置为无任何增益的基础状态。
@@ -23,6 +31,7 @@ namespace AssemblyLine.Data.Machine
         {
             SpeedMultiplier = 1.0f;
             MaxProcessingQueues = 1;
+            ExtraStorageCapacity = 0;
         }
     }
 
@@ -121,6 +130,53 @@ namespace AssemblyLine.Data.Machine
             }
 
             Debug.Log($"[数据层] {ShellID} 属性已刷新 -> 速度: {CurrentStats.SpeedMultiplier}x, 队列数: {CurrentStats.MaxProcessingQueues}");
+
+
+            // ... [以上为增益计算逻辑] ...
+
+            // 【新增】：仓储核心动态容量推算机制
+            if (MainCore is WarehouseCoreData warehouseCore)
+            {
+                // 1. 计算总面积与占用
+                int totalArea = Bounds.width * Bounds.height;
+                int occupiedCells = 0;
+                
+                foreach (var module in Modules)
+                {
+                    // 使用已有的 GetOccupiedLocalCells 方法获取占据格子数
+                    occupiedCells += module.GetOccupiedLocalCells().Count;
+                }
+
+                // 2. 纯网格数学计算空闲格子数 (完全兼容你预期的“不对齐”现象)
+                int freeCells = totalArea - DeadCells.Count - occupiedCells;
+                freeCells = Math.Max(0, freeCells); // 使用 System.Math.Max
+
+                // 3. 推算总容量
+                int baseStoragePerCell = 1; // 兜底默认值
+                if (warehouseCore.Definition is WarehouseCoreDefinition whDef)
+                {
+                    baseStoragePerCell = whDef.BaseStoragePerFreeCell;
+                }
+
+                int targetCapacity = (freeCells * baseStoragePerCell) + CurrentStats.ExtraStorageCapacity;
+
+                // 4. 执行库存容量重构与溢出接管
+                List<InventorySlot> spilled = warehouseCore.Storage.Resize(targetCapacity);
+                
+                // 5. 溢出物临时销毁处理
+                if (spilled.Count > 0)
+                {
+                    string log = $"[数据层] 仓库 {ShellID} 缩容至 {targetCapacity}。因空间不足直接销毁了以下溢出物：\n";
+                    foreach (var drop in spilled)
+                    {
+                        log += $"- {drop.ItemType.DisplayName} x{drop.Count}\n";
+                    }
+                    Debug.LogWarning(log);
+                    // 未来若有掉落物系统，可在此处请求 SimulationController 抛出实体
+                }
+
+                Debug.Log($"[数据层] {ShellID} 仓储容量重算完毕。空闲格子:{freeCells}, 目标容量:{targetCapacity}");
+            }        
         }
     }
 }

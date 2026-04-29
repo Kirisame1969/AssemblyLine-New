@@ -116,7 +116,15 @@ public class MachineManager : MonoBehaviour
         shell.Modules.Add(module);
 
         // 2. 路由快速索引注册
-        if (module is MachineCoreData core) shell.MainCore = core;
+        if (module is MachineCoreData core) 
+        {
+            shell.MainCore = core;
+            // 【新增】：如果放置的是仓储核心，打上时间戳烙印！
+            if (core is WarehouseCoreData wh)
+            {
+                wh.BuildTick = SimulationController.Instance.CurrentTick;
+            }
+        }
         else if (module is InputPortData inputPort) shell.InputPorts.Add(inputPort);
         else if (module is OutputPortData outputPort) shell.OutputPorts.Add(outputPort);
 
@@ -234,6 +242,7 @@ public class MachineManager : MonoBehaviour
             MachineShellData shell = AllActiveShells[i];
             if (shell.MainCore == null) continue; 
             // 没装核心的空壳子不工作
+
             MachineCoreData core = shell.MainCore;
 
             // ------------------------------------
@@ -318,7 +327,27 @@ public class MachineManager : MonoBehaviour
                 }
                 //绝对不能写 continue，它需要走到阶段 2 把买到的东西吐出来！
             }
-            // 【常规分支 C】：普通的加工机器，执行原有的配方驱动逻辑
+            // 【新增分支】：仓储核心的存入逻辑
+            else if (core is WarehouseCoreData warehouse)
+            {
+                if (warehouse.ActiveQueues.Count > 0)
+                {
+                    ProcessingQueue buffer = warehouse.ActiveQueues[0];
+                    
+                    // 倒序遍历缓冲区，尝试将刚刚进入的实体压入深层数组
+                    for (int k = buffer.InputBuffer.Count - 1; k >= 0; k--)
+                    {
+                        ItemData incoming = buffer.InputBuffer[k];
+                        if (warehouse.Storage.TryAdd(incoming.Definition))
+                        {
+                            // 成功存入底层数据，从输入缓冲中销毁旧实体引用
+                            buffer.InputBuffer.RemoveAt(k);
+                        }
+                    }
+                }
+            }
+
+            // 【常规分支】：普通的加工机器，执行原有的配方驱动逻辑
             else 
             {
                 for (int j = 0; j < core.ActiveQueues.Count; j++)
@@ -355,47 +384,59 @@ public class MachineManager : MonoBehaviour
                 {
                     OutputPortData port = shell.OutputPorts[p];
 
-                    // 在所有的队列中，寻找第一个有产物可以吐出的队列
-                    ProcessingQueue readyQueue = null;
-                    for (int q = 0; q < core.ActiveQueues.Count; q++)
+                    // 【先决条件】：先判定外面的物理网格能不能放东西，避免“拿出了物品却放不下”的尴尬
+                    if (TryGetExternalPosition(shell, port, out Vector2Int forwardPos))
                     {
-                        if (core.ActiveQueues[q].OutputBuffer.Count > 0)
+                        GridCell forwardCell = GridManager.Instance.GetGridCell(forwardPos);
+                        
+                        // 严苛握手：必须有履带、无物品、无模块阻挡
+                        if (forwardCell != null && forwardCell.Belt != null && forwardCell.Item == null && forwardCell.OccupyingModule == null)
                         {
-                            readyQueue = core.ActiveQueues[q];
-                            break; // 找到就立刻跳出，优先服务该队列
-                        }
-                    }
+                            ItemDefinition itemToSpit = null;
 
-                    // 如果有产物可以吐
-                    if (readyQueue != null)
-                    {
-                        // 【核心架构替换点】：使用我们第一步制定的空间映射协议
-                        // 替代原有简单的坐标相加。这道防线会自动拦截“朝向对内”、“深埋机箱”等非法端口！
-                        if (TryGetExternalPosition(shell, port, out Vector2Int forwardPos))
-                        {
-                            GridCell forwardCell = GridManager.Instance.GetGridCell(forwardPos);
-
-                            // 严苛握手：不仅要有传送带、没有物品，且该格子上绝对不能被另一个机壳或模块物理占领！
-                            if (forwardCell != null && forwardCell.Belt != null && forwardCell.Item == null && forwardCell.OccupyingModule == null)
+                            // 根据核心类型，决定从哪里要货
+                            if (core is WarehouseCoreData warehouse)
                             {
-                                // 1. 数据层剥离
-                                ItemData outItem = readyQueue.OutputBuffer[0];
-                                readyQueue.OutputBuffer.RemoveAt(0);
-                                
-                                // 赋予大世界数据流坐标
+                                // 仓储模式：直接向深层库存请求，自带白名单过滤
+                                warehouse.Storage.TryTake(port.Rules, out itemToSpit);
+                            }
+                            else
+                            {
+                                // 普通模式：遍历自身的产物列队，寻找符合端口规则的物品
+                                for (int q = 0; q < core.ActiveQueues.Count; q++)
+                                {
+                                    ProcessingQueue qRef = core.ActiveQueues[q];
+                                    if (qRef.OutputBuffer.Count > 0)
+                                    {
+                                        // 查看即将弹出的产物
+                                        ItemData peekItem = qRef.OutputBuffer[0];
+                                        
+                                        // 匹配白名单（让普通机器也能享受高级过滤功能！）
+                                        if (port.Rules.IsAllowed(peekItem.Definition))
+                                        {
+                                            itemToSpit = peekItem.Definition;
+                                            qRef.OutputBuffer.RemoveAt(0); // 真正弹出
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 如果成功要到了货，推向大世界
+                            if (itemToSpit != null)
+                            {
+                                // 重新赋予物理实体形态
+                                ItemData outItem = new ItemData(itemToSpit);
                                 forwardCell.Item = outItem;
                                 outItem.CurrentCell = forwardCell;
                                 outItem.Progress = 0f; 
 
-                                // 2. 物理层注册与视觉层渲染
+                                // 向总控注册并在世界渲染
                                 SimulationController.Instance.RegisterItem(outItem);
-                                
                                 if (InteractionController.Instance != null)
                                 {
                                     InteractionController.Instance.SpawnItemVisual(outItem, forwardPos);
                                 }
-
-                                // 跳出内部逻辑，这个物理端口本 Tick 已经完成了一次吞吐任务
                             }
                         }
                     }
@@ -490,140 +531,74 @@ public class MachineManager : MonoBehaviour
             default:              return Vector2Int.zero;
         }
     }
-}
-
-
-
-/*
-    // 辅助工具：根据方向获取前方一格的坐标
-    private Vector2Int GetForwardPosition(Vector2Int pos, Direction dir)
-    {
-        switch (dir)
-        {
-            case Direction.Up: return new Vector2Int(pos.x, pos.y + 1);
-            case Direction.Right: return new Vector2Int(pos.x + 1, pos.y);
-            case Direction.Down: return new Vector2Int(pos.x, pos.y - 1);
-            case Direction.Left: return new Vector2Int(pos.x - 1, pos.y);
-            default: return pos;
-        }
-    }
 
     // ==========================================
-    // 配方引擎辅助方法 (已修复：参数改为独立的 ProcessingQueue)
+    // 全局库存与市场经济交割接口
     // ==========================================
-
-    private bool HasEnoughInputs(ProcessingQueue queue, RecipeDefinition recipe)
+    
+    /// <summary>
+    /// 尝试从全局所有仓库中扣减指定数量的物品。
+    /// 严格遵循多级排序规则：优先级(高到低) -> 存量(多到少) -> 建造时间(早到晚)。
+    /// 采用 All-or-Nothing (全有或全无) 事务机制，数量不足则一票否决，不执行任何扣减。
+    /// </summary>
+    /// <returns>交割是否成功</returns>
+    public bool TryConsumeGlobalItems(ItemDefinition targetItem, int requiredAmount)
     {
-        foreach (var req in recipe.Inputs)
-        {
-            int count = 0;
-            foreach (var item in queue.InputBuffer)
-            {
-                if (item.Definition == req.Item) count++;
-            }
-            if (count < req.Amount) return false; 
-        }
-        return true;
-    }
+        if (targetItem == null || requiredAmount <= 0) return false;
 
-    private void ConsumeInputs(ProcessingQueue queue, RecipeDefinition recipe)
-    {
-        foreach (var req in recipe.Inputs)
+        List<WarehouseCoreData> availableWarehouses = new List<WarehouseCoreData>();
+        int totalAvailable = 0;
+
+        // 1. 快速扁平化收集全图符合条件的仓库
+        for (int i = 0; i < AllActiveShells.Count; i++)
         {
-            int removedCount = 0;
-            for (int i = queue.InputBuffer.Count - 1; i >= 0; i--)
+            if (AllActiveShells[i].MainCore is WarehouseCoreData warehouse)
             {
-                if (queue.InputBuffer[i].Definition == req.Item)
+                int count = warehouse.Storage.GetItemCount(targetItem.ItemID);
+                if (count > 0)
                 {
-                    queue.InputBuffer.RemoveAt(i);
-                    removedCount++;
-                    if (removedCount == req.Amount) break; 
+                    availableWarehouses.Add(warehouse);
+                    totalAvailable += count;
                 }
             }
         }
-    }
 
-    private void ProduceOutputs(ProcessingQueue queue, RecipeDefinition recipe)
-    {
-        foreach (var outDef in recipe.Outputs)
+        // 2. 事务性校验：总存量是否满足订单需求？不满足则直接退回，保障经济系统严谨性
+        if (totalAvailable < requiredAmount) return false;
+
+        // 3. 执行核心级排序协议 (List.Sort 在运行时修改原地数组，不产生额外 GC)
+        availableWarehouses.Sort((a, b) =>
         {
-            for (int i = 0; i < outDef.Amount; i++)
-            {
-                queue.OutputBuffer.Add(new ItemData(outDef.Item));
-            }
-        }
-    }
+            // 规则一：玩家自定义优先级 (降序)
+            int priorityCompare = b.MarketPriority.CompareTo(a.MarketPriority);
+            if (priorityCompare != 0) return priorityCompare;
 
-    // ==========================================
-    // 附加至 MachineManager.cs 的 I/O 坐标映射服务
-    // ==========================================
+            // 规则二：同优先级下，存量多寡 (降序，防止某个仓库被意外抽干)
+            int stockA = a.Storage.GetItemCount(targetItem.ItemID);
+            int stockB = b.Storage.GetItemCount(targetItem.ItemID);
+            int stockCompare = stockB.CompareTo(stockA);
+            if (stockCompare != 0) return stockCompare;
 
-    /// <summary>
-    /// 尝试获取【输入端口】对外的绝对大世界交互坐标
-    /// </summary>
-    /// <param name="shell">所属机器外壳数据</param>
-    /// <param name="port">输入端口数据</param>
-    /// <param name="externalPos">输出：外部传送带所在的大世界坐标</param>
-    /// <returns>如果是贴边的合法向外端口返回true，否则返回false</returns>
-    public bool TryGetExternalPosition(MachineShellData shell, InputPortData port, out Vector2Int externalPos)
-    {
-        return CalculateExternalPos(shell, port.LocalBottomLeft, port.FacingDir, out externalPos);
-    }
+            // 规则三：兜底排序，建造时间 (升序，先建的先被抽)
+            return a.BuildTick.CompareTo(b.BuildTick);
+        });
 
-    /// <summary>
-    /// 尝试获取【输出端口】对外的绝对大世界交互坐标
-    /// </summary>
-    public bool TryGetExternalPosition(MachineShellData shell, OutputPortData port, out Vector2Int externalPos)
-    {
-        return CalculateExternalPos(shell, port.LocalBottomLeft, port.FacingDir, out externalPos);
-    }
-
-    /// <summary>
-    /// 核心计算逻辑：局部坐标转大世界目标交互坐标，并进行严苛的合法性校验
-    /// </summary>
-    private bool CalculateExternalPos(MachineShellData shell, Vector2Int localAnchor, Direction facingDir, out Vector2Int externalPos)
-    {
-        externalPos = Vector2Int.zero;
-        if (shell == null) return false;
-
-        // 1. 获取机器在大世界中的左下角原点
-        Vector2Int shellGlobalOrigin = shell.Bounds.position;
-
-        // 2. 计算端口模块本身的大世界绝对坐标
-        Vector2Int portGlobalPos = shellGlobalOrigin + localAnchor;
-
-        // 3. 根据朝向获取方向向量偏移
-        Vector2Int dirOffset = GetDirectionOffset(facingDir);
-
-        // 4. 计算预期的交互坐标（大世界坐标系）
-        externalPos = portGlobalPos + dirOffset;
-
-        // 5. 绝对防线：利用 RectInt 原生方法检查目标坐标是否在机箱内部！
-        // 如果 Bounds.Contains 返回 true，说明该端口尝试吸取/吐出物品到机壳物理占地内
-        // 这属于非法摆放（深埋或向内），在数据层彻底掐断其吞吐能力
-        if (shell.Bounds.Contains(externalPos))
+        // 4. 稳健扣减逻辑执行
+        int remainingToConsume = requiredAmount;
+        for (int i = 0; i < availableWarehouses.Count; i++)
         {
-            return false; 
+            // 定向抽取
+            int extracted = availableWarehouses[i].Storage.ExtractItem(targetItem.ItemID, remainingToConsume);
+            remainingToConsume -= extracted;
+
+            // 订单满足，立刻跳出循环
+            if (remainingToConsume <= 0) break; 
         }
 
+        Debug.Log($"[经济系统] 成功执行全局交割！扣除 {targetItem.DisplayName} 共 {requiredAmount} 个。涉及仓库数：{availableWarehouses.Count}");
         return true;
     }
 
-    /// <summary>
-    /// 纯数学辅助：方向枚举转向量（基于你 BeltData.cs 中的顺时针枚举）
-    /// Up=0, Right=1, Down=2, Left=3
-    /// </summary>
-    private Vector2Int GetDirectionOffset(Direction dir)
-    {
-        switch (dir)
-        {
-            case Direction.Up:    return new Vector2Int(0, 1);
-            case Direction.Right: return new Vector2Int(1, 0);
-            case Direction.Down:  return new Vector2Int(0, -1);
-            case Direction.Left:  return new Vector2Int(-1, 0);
-            default:              return Vector2Int.zero;
-        }
-    }
-    */
+}
 
 

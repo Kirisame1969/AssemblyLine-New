@@ -9,7 +9,8 @@ public enum ModuleLogicalType
     InputPort,  // 输入匣
     OutputPort,  // 输出匣
     ExporterCore,  // 交付仓库核心 (黑洞变现)
-    ImporterCore   // 市场采购终端
+    ImporterCore,   // 市场采购终端
+    WarehouseCore // 【新增】仓储核心
 }
 
 [CreateAssetMenu(fileName = "NewModuleDef", menuName = "Factory/Module Definition")]
@@ -35,6 +36,7 @@ public class ModuleDefinition : ScriptableObject
     [Tooltip("UI 左侧列表专用的图标。如果不填，将默认使用上面的 Icon")]
     public Sprite ItemIcon;
 
+    
     //[Header("模块属性")]
     //public ModuleType Type;
     //public ModuleShapeData Shape;
@@ -72,6 +74,9 @@ public class ModuleDefinition : ScriptableObject
             case ModuleLogicalType.ImporterCore://  购买核心
                 newInstance = new ImporterCoreData();
                 break;
+            case ModuleLogicalType.WarehouseCore: // 【新增分支】仓储核心
+                newInstance = new WarehouseCoreData(); 
+                break;
             case ModuleLogicalType.NormalRect:
             default:
                 newInstance = new RectModuleData(); // 改为了无参数构造，稍后在数据模型里更新
@@ -82,4 +87,6 @@ public class ModuleDefinition : ScriptableObject
         newInstance.Definition = this; 
         return newInstance;
     }
+
+
 }
