@@ -42,7 +42,8 @@ namespace AssemblyLine.Data.Machine
             List<Vector2Int> result = new List<Vector2Int>();
             
             // 若未配置形状数据，默认仅占用锚点所在的一格
-            if (Definition == null || Definition.Shape == null || Definition.Shape.BaseCells.Count == 0)
+            // 【架构师修正】：增加 Definition.Shape.BaseCells == null 的空值校验，防止列表未初始化
+            if (Definition == null || Definition.Shape == null || Definition.Shape.BaseCells == null || Definition.Shape.BaseCells.Count == 0)
             {
                 result.Add(LocalBottomLeft);
                 return result;

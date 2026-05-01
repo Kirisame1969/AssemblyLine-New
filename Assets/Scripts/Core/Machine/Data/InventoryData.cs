@@ -248,5 +248,51 @@ namespace AssemblyLine.Data.Machine
             }
             return extracted;
         }
+
+        // 追加在 AssemblyLine.Data.Machine.InventoryData 类中：
+
+        /// <summary>
+        /// 处理两个槽位之间的安全交互（拖拽操作的底层响应）。
+        /// 若物品相同则尝试合并堆叠；若物品不同则互换位置。
+        /// </summary>
+        public void InteractSlots(int fromIndex, int toIndex)
+        {
+            if (fromIndex == toIndex) return;
+            // 防御性编程：数组越界防护
+            if (fromIndex < 0 || fromIndex >= Slots.Length || toIndex < 0 || toIndex >= Slots.Length) return;
+
+            InventorySlot source = Slots[fromIndex];
+            InventorySlot target = Slots[toIndex];
+
+            // 如果源槽位为空，不产生任何交互
+            if (source.IsEmpty) return;
+
+            // 分支 1：目标为空，或异类物品 -> 互相交换数据
+            if (target.IsEmpty || target.ItemType.ItemID != source.ItemType.ItemID)
+            {
+                ItemDefinition tempType = target.ItemType;
+                int tempCount = target.Count;
+
+                target.ItemType = source.ItemType;
+                target.Count = source.Count;
+
+                source.ItemType = tempType;
+                source.Count = tempCount;
+            }
+            // 分支 2：同类物品 -> 堆叠合并
+            else
+            {
+                int spaceLeft = MaxStackPerSlot - target.Count;
+                if (spaceLeft > 0)
+                {
+                    int transferAmount = Math.Min(spaceLeft, source.Count);
+                    target.Count += transferAmount;
+                    source.Count -= transferAmount;
+                    
+                    // 若源槽位被搬空，彻底清理脏数据
+                    if (source.Count <= 0) source.Clear();
+                }
+            }
+        }
     }
 }

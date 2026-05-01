@@ -87,7 +87,7 @@ public class InteractionController : MonoBehaviour
 #region 总控循环 (Update)
     private void Update()
     {
-        
+
         // 1. 全局拦截：防 UI 穿透
         //if (EventSystem.current.IsPointerOverGameObject() && Input.GetMouseButtonDown(0)) return;
         if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())

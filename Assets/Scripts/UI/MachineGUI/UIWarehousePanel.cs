@@ -1,5 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.EventSystems;
+using UnityEngine.UI;
 using AssemblyLine.Data.Machine;
 
 namespace AssemblyLine.UI
@@ -14,8 +16,19 @@ namespace AssemblyLine.UI
         public Transform SlotGridContainer;   // 推荐挂载 Unity 原生的 GridLayoutGroup 组件
         public GameObject UIInventorySlotPrefab; // 刚才写的格子的预制体
 
+        [Header("拖拽系统 (需在 UI 上挂载空 Image)")]
+        public RectTransform DragGhost; 
+        public Image DragGhostImage;
+
+        [Header("性能优化")]
+        [Tooltip("UI 每秒刷新频率（赫兹）")]
+        public float UIRefreshRate = 15f;
+
         private WarehouseCoreData _targetWarehouse;
         private List<UIInventorySlot> _uiSlots = new List<UIInventorySlot>();
+
+        private float _refreshTimer = 0f;
+        private int _dragSourceIndex = -1;
 
         /// <summary>
         /// 当玩家打开机箱面板，且机箱是仓库时调用。
@@ -30,6 +43,9 @@ namespace AssemblyLine.UI
             
             // 2. 初始化立刻刷新一次视觉
             RefreshAllSlots();
+
+            // 确保拖拽残影初始处于隐藏状态
+            if (DragGhost != null) DragGhost.gameObject.SetActive(false);
         }
 
         /// <summary>
@@ -46,7 +62,7 @@ namespace AssemblyLine.UI
             {
                 GameObject obj = Instantiate(UIInventorySlotPrefab, SlotGridContainer);
                 UIInventorySlot slotScript = obj.GetComponent<UIInventorySlot>();
-                slotScript.InitSlot(_uiSlots.Count);
+                slotScript.InitSlot(_uiSlots.Count, this);
                 _uiSlots.Add(slotScript);
             }
 
@@ -73,5 +89,54 @@ namespace AssemblyLine.UI
                 _uiSlots[i].RefreshVisuals(_targetWarehouse.Storage.Slots[i]);
             }
         }
+
+        // ==========================================
+        // 拖拽残影逻辑与指令下发
+        // ==========================================
+        public void OnSlotBeginDrag(int slotIndex, Sprite icon)
+        {
+            _dragSourceIndex = slotIndex;
+            if (DragGhost != null && icon != null)
+            {
+                DragGhost.gameObject.SetActive(true);
+                DragGhostImage.sprite = icon;
+                DragGhost.transform.SetAsLastSibling(); // 确保渲染在最顶层
+                UpdateDragGhostPosition(Input.mousePosition);
+            }
+        }
+
+        public void OnSlotDrag(PointerEventData eventData)
+        {
+            if (_dragSourceIndex != -1) UpdateDragGhostPosition(eventData.position);
+        }
+
+        public void OnSlotEndDrag()
+        {
+            _dragSourceIndex = -1;
+            if (DragGhost != null) DragGhost.gameObject.SetActive(false);
+        }
+
+        public void OnSlotDrop(int dropTargetIndex)
+        {
+            // 验证：正在拖拽，且没有原地放下
+            if (_dragSourceIndex != -1 && _dragSourceIndex != dropTargetIndex)
+            {
+                // 指令下发：调用底层的安全交互方法
+                _targetWarehouse.Storage.InteractSlots(_dragSourceIndex, dropTargetIndex);
+                
+                // 为了视觉即时反馈，交互完毕立刻强刷一次 UI，忽略定时器
+                RefreshAllSlots(); 
+            }
+        }
+
+        private void UpdateDragGhostPosition(Vector2 screenPos)
+        {
+            if (DragGhost != null && RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                (RectTransform)transform, screenPos, null, out Vector2 localPoint))
+            {
+                DragGhost.anchoredPosition = localPoint;
+            }
+        }
+        
     }
 }
