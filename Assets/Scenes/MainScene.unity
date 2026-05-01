@@ -513,7 +513,7 @@ GameObject:
   - component: {fileID: 40720793}
   - component: {fileID: 40720792}
   m_Layer: 5
-  m_Name: Canvas
+  m_Name: ScientificCanvas
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -819,7 +819,7 @@ MonoBehaviour:
   m_HandleRect: {fileID: 1848844322}
   m_Direction: 0
   m_Value: 1
-  m_Size: 1
+  m_Size: 0.9999999
   m_NumberOfSteps: 0
   m_OnValueChanged:
     m_PersistentCalls:
@@ -3251,7 +3251,7 @@ MonoBehaviour:
   m_HandleRect: {fileID: 1744883160}
   m_Direction: 2
   m_Value: 1.0000046
-  m_Size: 0.6100001
+  m_Size: 0.61
   m_NumberOfSteps: 0
   m_OnValueChanged:
     m_PersistentCalls:
@@ -9790,7 +9790,7 @@ MonoBehaviour:
     m_SelectOnRight: {fileID: 0}
   m_Transition: 1
   m_Colors:
-    m_NormalColor: {r: 1, g: 1, b: 1, a: 1}
+    m_NormalColor: {r: 0.98742133, g: 0.98742133, b: 0.98742133, a: 1}
     m_HighlightedColor: {r: 0.9607843, g: 0.9607843, b: 0.9607843, a: 1}
     m_PressedColor: {r: 0.78431374, g: 0.78431374, b: 0.78431374, a: 1}
     m_SelectedColor: {r: 0.9607843, g: 0.9607843, b: 0.9607843, a: 1}
@@ -10105,6 +10105,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   EconomyData:
     Funds: 500
+    TalentPoints: 0
     CurrentCycleRevenue: 0
     CurrentCycleExpenses: 0
 --- !u!4 &1850271800
@@ -12131,7 +12132,7 @@ GameObject:
   - component: {fileID: 2139257352}
   - component: {fileID: 2139257351}
   m_Layer: 5
-  m_Name: Panel
+  m_Name: ScientificPanel
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -13858,7 +13859,7 @@ MonoBehaviour:
   m_HandleRect: {fileID: 8393001014755736094}
   m_Direction: 2
   m_Value: 0
-  m_Size: 1
+  m_Size: 0.9980685
   m_NumberOfSteps: 0
   m_OnValueChanged:
     m_PersistentCalls:
@@ -14607,7 +14608,7 @@ MonoBehaviour:
   m_HandleRect: {fileID: 8371193340268399193}
   m_Direction: 0
   m_Value: 0
-  m_Size: 1
+  m_Size: 0.9998576
   m_NumberOfSteps: 0
   m_OnValueChanged:
     m_PersistentCalls:
@@ -15213,7 +15214,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.066, y: 1}
   m_AnchorMax: {x: 0.96700007, y: 1}
-  m_AnchoredPosition: {x: -12.077927, y: 0.000101059515}
+  m_AnchoredPosition: {x: -12.077984, y: -0.000041458145}
   m_SizeDelta: {x: 18, y: 314.1665}
   m_Pivot: {x: 0, y: 1}
 --- !u!1 &8525351873161084644
