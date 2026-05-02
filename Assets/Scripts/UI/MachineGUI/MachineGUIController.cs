@@ -71,6 +71,33 @@ public class MachineGUIController : MonoBehaviour
     }
 
     // ==========================================
+    // 事件订阅：安全重置面板
+    // ==========================================
+    private void Start()
+    {
+        if (AssemblyLine.Core.Manager.SaveLoad.SaveLoadManager.Instance != null)
+        {
+            AssemblyLine.Core.Manager.SaveLoad.SaveLoadManager.Instance.OnSimulationDataRestored += HandleDataRestored;
+        }
+    }
+
+    private void OnDestroy()
+    {
+        if (AssemblyLine.Core.Manager.SaveLoad.SaveLoadManager.Instance != null)
+        {
+            AssemblyLine.Core.Manager.SaveLoad.SaveLoadManager.Instance.OnSimulationDataRestored -= HandleDataRestored;
+        }
+    }
+
+    private void HandleDataRestored()
+    {
+        // 读档后，旧机箱数据的内存指针已失效。
+        // 强制关闭面板，强迫玩家重新点击新生成的机箱。
+        ClosePanel();
+        Debug.Log("[View] 已自动关闭装配 UI 面板，防止读档指针异常。");
+    }
+
+    // ==========================================
     // 外部入口：打开面板并绑定数据
     // ==========================================
 

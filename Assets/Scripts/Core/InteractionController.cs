@@ -72,6 +72,11 @@ public class InteractionController : MonoBehaviour
         {
             SimulationController.Instance.OnItemLogicRemoved += DestroyItemVisual;
         }
+        // 【新增】：监听存读档完成事件，实现画面自动重绘
+        if (AssemblyLine.Core.Manager.SaveLoad.SaveLoadManager.Instance != null)
+        {
+            AssemblyLine.Core.Manager.SaveLoad.SaveLoadManager.Instance.OnSimulationDataRestored += OnDataRestored;
+        }
     }
 
     private void OnDestroy()
@@ -80,6 +85,11 @@ public class InteractionController : MonoBehaviour
         if (SimulationController.Instance != null)
         {
             SimulationController.Instance.OnItemLogicRemoved -= DestroyItemVisual;
+        }
+        // 【新增】：安全注销，防止内存泄漏
+        if (AssemblyLine.Core.Manager.SaveLoad.SaveLoadManager.Instance != null)
+        {
+            AssemblyLine.Core.Manager.SaveLoad.SaveLoadManager.Instance.OnSimulationDataRestored -= OnDataRestored;
         }
     }
     // ==========================================
@@ -116,6 +126,9 @@ public class InteractionController : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.Alpha2)) SetTimeSpeed(TimeSpeed.Fast);
         if (Input.GetKeyDown(KeyCode.Alpha3)) SetTimeSpeed(TimeSpeed.SuperFast);
 
+        // 临时测试键
+        if (Input.GetKeyDown(KeyCode.Z)) AssemblyLine.Core.Manager.SaveLoad.SaveLoadManager.Instance.SaveGame("TestSlot");
+        if (Input.GetKeyDown(KeyCode.X)) AssemblyLine.Core.Manager.SaveLoad.SaveLoadManager.Instance.LoadGame("TestSlot");
         // 4. 状态分发器 (核心重构区)
         switch (CurrentBuildType)
         {
@@ -767,6 +780,75 @@ public class InteractionController : MonoBehaviour
             visual.Init(text, color);
         }
     }
+
+    // ==========================================
+    // 【核心重构逻辑】：全盘销毁与按图索骥
+    // ==========================================
+    private void OnDataRestored()
+    {
+        // 1. 清空当前玩家手里的状态（放下正在造的传送带或机箱）
+        ResetBuildState();
+
+        // 2. 焦土政策：清空大世界上所有的视觉表现
+        foreach (var kvp in _spawnedBelts) Destroy(kvp.Value);
+        _spawnedBelts.Clear();
+
+        foreach (var kvp in _spawnedItems) Destroy(kvp.Value);
+        _spawnedItems.Clear();
+
+        foreach (var kvp in _worldShellVisuals)
+        {
+            foreach (var v in kvp.Value.FloorQuads) Destroy(v);
+            foreach (var v in kvp.Value.PortOverlays) Destroy(v);
+        }
+        _worldShellVisuals.Clear();
+
+        // 3. 重建大世界网格上的传送带和物品
+        GridCell[,] allCells = GridManager.Instance.GetAllCells();
+        int width = allCells.GetLength(0);
+        int height = allCells.GetLength(1);
+
+        for (int x = 0; x < width; x++)
+        {
+            for (int y = 0; y < height; y++)
+            {
+                GridCell cell = allCells[x, y];
+                Vector2Int pos = new Vector2Int(x, y);
+
+                // 还原传送带表现与旋转朝向
+                if (cell.Belt != null)
+                {
+                    Vector2 spawnPos = GridManager.Instance.GridToWorldPosition(pos);
+                    GameObject newBelt = Instantiate(BeltPrefab, spawnPos, Quaternion.identity);
+                    _spawnedBelts.Add(pos, newBelt);
+                    UpdateVisualRotation(newBelt, cell.Belt.Dir);
+                }
+
+                // 还原露天物品表现（机器肚子里的不需要画出来）
+                if (cell.Item != null && !_spawnedItems.ContainsKey(cell.Item))
+                {
+                    SpawnItemVisual(cell.Item, pos);
+                }
+            }
+        }
+
+        // 4. 重建大世界机箱底板和端口标识
+        if (MachineManager.Instance != null)
+        {
+            foreach (var shell in MachineManager.Instance.AllActiveShells)
+            {
+                // 现有的方法已经具备了数据幂等性（重复写数据不会报错），可以直接复用生成四边形
+                PlaceShellInWorld(shell); 
+                RefreshPortOverlayVisuals(shell);
+            }
+        }
+
+        // 5. 刷新传送带条带的染色
+        UpdateBeltColorVisuals();
+
+        Debug.Log("[View] 大世界画面已根据新数据完全重绘！");
+    }
+
 #endregion
 
 }

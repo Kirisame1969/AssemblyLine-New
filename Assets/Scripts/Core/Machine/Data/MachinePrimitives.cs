@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine; // 仅用于 Vector2Int 数学结构
+using AssemblyLine.Data.SaveData;
 
 // 定义构建工厂机器系统不可或缺的基础“砖块”-------纯数值结构体、枚举和数据包容器。
 // 它们不包含任何主动的业务逻辑，仅负责静态数据的存储与物理/几何形态的数学表达。
@@ -31,6 +32,26 @@ namespace AssemblyLine.Data.Machine
         
         // 缓冲池的容量上限
         public int MaxBufferSize = 10; 
+        
+        // 在 ProcessingQueue 类的末尾追加：
+        public ProcessingQueueSaveData ToSaveData()
+        {
+            var save = new ProcessingQueueSaveData
+            {
+                // 注意：这里假设您的 RecipeDefinition 使用 name 作为字典 Key。如果配方图纸内部有专属的 RecipeID 字段，请替换为 CurrentRecipe.RecipeID
+                RecipeID = this.CurrentRecipe != null ? this.CurrentRecipe.RecipeID : null, 
+                ProcessingProgress = this.ProcessingProgress,
+                MaxBufferSize = this.MaxBufferSize,
+                InputBuffer = new List<ItemSaveData>(),
+                OutputBuffer = new List<ItemSaveData>()
+            };
+
+            // 遍历并压入所有的物品数据
+            foreach (var item in this.InputBuffer) save.InputBuffer.Add(item.ToSaveData());
+            foreach (var item in this.OutputBuffer) save.OutputBuffer.Add(item.ToSaveData());
+
+            return save;
+        }
     }
 
     /// <summary>

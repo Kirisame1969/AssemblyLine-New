@@ -609,6 +609,19 @@ public class MachineManager : MonoBehaviour
         return true;
     }
 
+    // ==========================================
+    // [存档系统扩展] 数据快照与热重置接口
+    // ==========================================
+
+    /// <summary>
+    /// 热重置所有机箱数据。
+    /// </summary>
+    public void ClearAll()
+    {
+        AllActiveShells.Clear();
+        Debug.Log("[MachineManager] 所有机箱数据已清空。");
+    }
+
 }
 
 

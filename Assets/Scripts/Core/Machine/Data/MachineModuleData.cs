@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using AssemblyLine.Data.SaveData;
 
 // 作为所有机箱内部模块（如核心、I/O 端口、普通组件）的抽象父类。
 // 它统一管理模块的基础状态数据（坐标、旋转、所属机壳、配置图纸），并提供默认的空间占用与连通性计算逻辑。
@@ -88,6 +89,65 @@ namespace AssemblyLine.Data.Machine
                 }
             }
             return connections;
+        }
+
+        // ========== 【在 MachineModuleData 类末尾新增以下方法】 ==========
+        /// <summary>
+        /// 将模块及其多态子类的特性扁平化至一个 DTO 中。
+        /// </summary>
+        public virtual ModuleSaveData ToSaveData()
+        {
+            var data = new ModuleSaveData
+            {
+                ModuleType = this.GetType().Name, // 【新增这一行】：利用反射自动获取子类类名
+                ModuleDefinitionID = this.Definition != null ? this.Definition.name : null,
+                LocalBottomLeft = this.LocalBottomLeft,
+                Rotation = (int)this.Rotation
+            };
+
+            // 扁平化提取特化数据 (安全向下转型)
+            if (this is WarehouseCoreData warehouse)
+            {
+                data.Storage = warehouse.Storage.ToSaveData();
+                data.MarketPriority = warehouse.MarketPriority;
+                data.BuildTick = warehouse.BuildTick;
+            }
+            else if (this is ImporterCoreData importer)
+            {
+                data.TargetItemID = importer.TargetItem != null ? importer.TargetItem.name : null;
+                data.ImportTime = importer.ImportTime;
+            }
+            else if (this is InputPortData inPort)
+            {
+                data.Rules = new PortRuleConfigSaveData
+                {
+                    Whitelist = new List<string>(inPort.Rules.Whitelist),
+                    MaxThroughputPerTick = inPort.Rules.MaxThroughputPerTick,
+                    MarketPriority = inPort.Rules.MarketPriority
+                };
+            }
+            else if (this is OutputPortData outPort)
+            {
+                data.Rules = new PortRuleConfigSaveData
+                {
+                    Whitelist = new List<string>(outPort.Rules.Whitelist),
+                    MaxThroughputPerTick = outPort.Rules.MaxThroughputPerTick,
+                    MarketPriority = outPort.Rules.MarketPriority
+                };
+            }
+
+            // 【核心修复】：由于 MachineCoreData 是所有核心（含仓库/进出口）的父类，
+            // 只要它是核心，就必须把它内部的加工队列/缓存区完整提取出来！
+            if (this is MachineCoreData core)
+            {
+                data.ActiveQueues = new List<ProcessingQueueSaveData>();
+                foreach (var queue in core.ActiveQueues)
+                {
+                    data.ActiveQueues.Add(queue.ToSaveData());
+                }
+            }
+            
+            return data;
         }
     }
 }

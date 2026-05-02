@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using AssemblyLine.Data.SaveData;
 
 // 作为机器实体的根数据节点。
 // 负责存储机箱的物理边界、死区/隔断墙限制、汇总内部安装的所有模块实例，并维护关键模块（核心、输入输出端口）的路由索引。
@@ -177,6 +178,34 @@ namespace AssemblyLine.Data.Machine
 
                 Debug.Log($"[数据层] {ShellID} 仓储容量重算完毕。空闲格子:{freeCells}, 目标容量:{targetCapacity}");
             }        
+        }
+
+        /// <summary>
+        /// 将整台机器及其内部所有模块状态降维为存档数据包。
+        /// 自动忽略 DeadCells 和 PartitionWalls 等冗余缓存。
+        /// </summary>
+        public MachineShellSaveData ToSaveData()
+        {
+            var save = new MachineShellSaveData
+            {
+                ShellID = this.ShellID,
+                ProfileID = this.Profile != null ? this.Profile.name : null, 
+                // 【核心修复】：拆解 Bounds 赋值
+                BoundsX = this.Bounds.x,
+                BoundsY = this.Bounds.y,
+                BoundsWidth = this.Bounds.width,
+                BoundsHeight = this.Bounds.height,
+                
+                Modules = new List<ModuleSaveData>()
+            };
+
+            // 注意：此处代码需要 MachineModuleData 也实装了 ToSaveData 方法（见下方补充修改）
+            foreach (var module in this.Modules)
+            {
+                save.Modules.Add(module.ToSaveData());
+            }
+
+            return save;
         }
     }
 }

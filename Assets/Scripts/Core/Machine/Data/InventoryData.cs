@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using AssemblyLine.Data.SaveData;
 
 namespace AssemblyLine.Data.Machine
 {
@@ -291,6 +292,53 @@ namespace AssemblyLine.Data.Machine
                     
                     // 若源槽位被搬空，彻底清理脏数据
                     if (source.Count <= 0) source.Clear();
+                }
+            }
+        }
+
+        /// <summary>
+        /// 生成当前库存的纯数据快照。
+        /// </summary>
+        public InventorySaveData ToSaveData()
+        {
+            var save = new InventorySaveData
+            {
+                MaxStackPerSlot = this.MaxStackPerSlot,
+                Slots = new InventorySlotSaveData[this.Slots.Length]
+            };
+
+            for (int i = 0; i < this.Slots.Length; i++)
+            {
+                save.Slots[i] = new InventorySlotSaveData
+                {
+                    // 若槽位为空，记录 null；否则记录物品图纸的 ID (此处默认取图纸的 name 或对应 ID 字段)
+                    // 【核心修复】：同样必须使用 ItemID！
+                    ItemID = this.Slots[i].IsEmpty ? null : this.Slots[i].ItemType.ItemID,
+                    Count = this.Slots[i].Count
+                };
+            }
+            return save;
+        }
+        // ==========================================
+        // 存档扩展方法：数据重构
+        // ==========================================
+        /// <summary>
+        /// 存档重构：将 DTO 数据安全地覆盖回当前库存数组。
+        /// </summary>
+        public void RestoreFromSaveData(InventorySaveData data, Func<string, ItemDefinition> itemResolver)
+        {
+            if (data == null || data.Slots == null) return;
+            
+            this.MaxStackPerSlot = data.MaxStackPerSlot;
+            this.Slots = new InventorySlot[data.Slots.Length];
+            
+            for (int i = 0; i < data.Slots.Length; i++)
+            {
+                this.Slots[i] = new InventorySlot();
+                if (!string.IsNullOrEmpty(data.Slots[i].ItemID))
+                {
+                    this.Slots[i].ItemType = itemResolver(data.Slots[i].ItemID);
+                    this.Slots[i].Count = data.Slots[i].Count;
                 }
             }
         }

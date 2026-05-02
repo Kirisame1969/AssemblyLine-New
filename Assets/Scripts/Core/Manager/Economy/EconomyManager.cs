@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using AssemblyLine.Data;
 
 /// <summary>
 /// 控制层：全局经济调度中心
@@ -143,5 +144,17 @@ public class EconomyManager : MonoBehaviour
         }
 
         return totalCost;
+    }
+    
+    // ==========================================
+    // [存档系统扩展] 数据复原接口
+    // ==========================================
+    /// <summary>
+    /// 直接设置玩家资金，不产生流水记录，并强制刷新 UI 表现层。
+    /// </summary>
+    public void SetFunds(long exactAmount)
+    {
+        EconomyData.Funds = exactAmount;
+        OnFundsChanged?.Invoke(EconomyData.Funds);
     }
 }

@@ -96,4 +96,26 @@ public class GridManager : MonoBehaviour
 
         Debug.Log($"修改了 [{posA.x},{posA.y}] 和 [{posB.x},{posB.y}] 之间的连接状态。当前切断状态: {!isCurrentlyCut}");
     }
+    
+    // ==========================================
+    // [存档系统扩展] 数据快照与热重置接口
+    // ==========================================
+
+    /// <summary>
+    /// 获取当前的网格数据源，供 SaveLoadManager 提取有状态的格子进行序列化。
+    /// </summary>
+    public GridCell[,] GetAllCells()
+    {
+        return _gridArray;
+    }
+
+    /// <summary>
+    /// 热重置网格。瞬间销毁当前地图上的所有物品、传送带与机器占位映射。
+    /// </summary>
+    public void ClearAll()
+    {
+        // 直接重新实例化整个二维数组，旧引用将由 C# 的 GC (垃圾回收器) 自动处理
+        InitializeGrid();
+        Debug.Log("[GridManager] 网格数据已完全重置。");
+    }
 }

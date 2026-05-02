@@ -154,4 +154,13 @@ public class StripManager : MonoBehaviour
         
         return axisNeighbors;
     }
+
+    // ==========================================
+    // [存档系统扩展] 数据快照与热重置接口
+    // ==========================================
+    public void ClearAll()
+    {
+        ActiveStrips.Clear();
+        Debug.Log("[StripManager] 所有物流条带数据已清空。");
+    }
 }

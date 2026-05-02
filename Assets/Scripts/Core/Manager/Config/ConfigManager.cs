@@ -15,11 +15,14 @@ namespace AssemblyLine.Core.Manager
         [Header("全局资产目录")]
         public ItemCatalog MainItemCatalog;
         public RecipeCatalog MainRecipeCatalog;
-        // 你已有的 ModuleCatalog 也可以在这里接入，进行统一管理
+        public ModuleCatalog MainModuleCatalog;
 
         // 核心检索哈希表
         private Dictionary<string, ItemDefinition> _itemDict = new Dictionary<string, ItemDefinition>();
         private Dictionary<string, RecipeDefinition> _recipeDict = new Dictionary<string, RecipeDefinition>();
+        private Dictionary<string, ModuleDefinition> _moduleDict = new Dictionary<string, ModuleDefinition>();
+        private Dictionary<string, MachineShellProfile> _profileDict = new Dictionary<string, MachineShellProfile>();
+
 
         private void Awake()
         {
@@ -71,6 +74,27 @@ namespace AssemblyLine.Core.Manager
                     }
                 }
             }
+
+            // 【新增】：初始化模块字典
+            if (MainModuleCatalog != null && MainModuleCatalog.AvailableModules != null) // 修改了这里
+            {
+                foreach (var mod in MainModuleCatalog.AvailableModules) // 修改了这里
+                {
+                    if (mod != null && !string.IsNullOrEmpty(mod.name) && !_moduleDict.ContainsKey(mod.name))
+                    {
+                        _moduleDict.Add(mod.name, mod);
+                    }
+                }
+            }
+            // 【新增】：初始化机箱外壳字典 (此处根据您实际的管理方式挂载，假设是通过 Resources 加载或通过 Catalog)
+            MachineShellProfile[] allProfiles = Resources.LoadAll<MachineShellProfile>(""); 
+            foreach (var profile in allProfiles)
+            {
+                if (profile != null && !_profileDict.ContainsKey(profile.name))
+                {
+                    _profileDict.Add(profile.name, profile);
+                }
+            }
         }
 
         // ==========================================
@@ -95,6 +119,30 @@ namespace AssemblyLine.Core.Manager
         {
             // 目前默认返回全部。未来可以在此进行遍历过滤
             return MainItemCatalog != null ? MainItemCatalog.AllItems : new List<ItemDefinition>();
+        }
+
+        // ==========================================
+        // 【新增】：存档还原专用检索接口
+        // ==========================================
+        public RecipeDefinition GetRecipe(string recipeID)
+        {
+            if (string.IsNullOrEmpty(recipeID)) return null;
+            _recipeDict.TryGetValue(recipeID, out var recipe);
+            return recipe;
+        }
+
+        public ModuleDefinition GetModule(string moduleID)
+        {
+            if (string.IsNullOrEmpty(moduleID)) return null;
+            _moduleDict.TryGetValue(moduleID, out var mod);
+            return mod;
+        }
+
+        public MachineShellProfile GetProfile(string profileID)
+        {
+            if (string.IsNullOrEmpty(profileID)) return null;
+            _profileDict.TryGetValue(profileID, out var profile);
+            return profile;
         }
     }
 }
