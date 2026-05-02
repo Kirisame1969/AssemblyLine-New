@@ -209,6 +209,16 @@ public class MachineManager : MonoBehaviour
         // 1. 确认该格子确实是一个输入匣
         if (targetCell.OccupyingModule is InputPortData inputPort)
         {
+
+            // ==========================================
+            // 【核心修复】：白名单与黑名单的物理拦截门卫！
+            // 如果端口规则不允许该物品进入，直接拒绝，让物品继续堵在传送带上。
+            // ==========================================
+            if (!inputPort.Rules.IsAllowed(item.Definition))
+            {
+                return false; 
+            }
+
             MachineShellData shell = inputPort.ParentShell;
             
             // 2. 确认机箱装了核心，并且有活跃的加工队列

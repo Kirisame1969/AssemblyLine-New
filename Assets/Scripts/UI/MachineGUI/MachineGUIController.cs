@@ -46,6 +46,9 @@ public class MachineGUIController : MonoBehaviour
     public UITabButton[] TabButtons; 
     public GameObject[] TabPages;
 
+    [Header("端口配置 UI")]
+    public AssemblyLine.UI.UIPortConfigPanel PortConfigPanel;
+
     [Header("仓库库存 UI")]
     public AssemblyLine.UI.UIWarehousePanel WarehousePanel; // 拖入挂载了此脚本的 TabPages[1] 节点
     
@@ -258,15 +261,34 @@ public class MachineGUIController : MonoBehaviour
     {
         if (_currentShell == null) return;
 
-        if (Input.GetKeyDown(KeyCode.Escape)) { ClosePanel(); return; }
+        // 【修复 2】：优先拦截 ESC 键，实现层级退栈
+        if (Input.GetKeyDown(KeyCode.Escape)) 
+        { 
+            // 如果子面板开启，只关闭子面板
+            if (PortConfigPanel != null && PortConfigPanel.PanelRoot != null && PortConfigPanel.PanelRoot.activeSelf)
+            {
+                PortConfigPanel.ClosePanel();
+            }
+            // 否则关闭整个机器大面板
+            else
+            {
+                ClosePanel(); 
+            }
+            return; 
+        }
 
         // 【关键防御】：只有在“装配视图”(Tab 0) 时，才处理内部大网格的交互！
         // 防止玩家在“库存视图”点击背包格子时，误把手里的模块塞进了机箱里！
         if (_currentTabIndex == 0)
         {
+            // 【修复 1】：颠倒控制链的执行顺序！
+            // 必须先处理交互（此时若手里有模块会被直接 return 阻断），再处理放置。
+            // 这彻底杜绝了“放置后清空手导致同帧误触”的幽灵穿透 Bug。
+            HandleModuleInteraction();
             HandleModulePlacement();
             HandleModuleRemoval();
         }
+
     }
 
     //处理模块放置
@@ -480,4 +502,36 @@ public class MachineGUIController : MonoBehaviour
         for (int i = 0; i < TabPages.Length; i++) TabPages[i]?.SetActive(i == targetIndex);
     }
 
+    /// <summary>
+    /// 处理对已放置模块的配置交互（如：点击输出匣设置白名单）
+    /// </summary>
+    private void HandleModuleInteraction()
+    {
+        // 【新增防御】：如果配置面板已经打开，直接阻断所有大网格底层的点击交互
+        if (PortConfigPanel != null && PortConfigPanel.PanelRoot != null && PortConfigPanel.PanelRoot.activeSelf) return;
+        
+        // 核心防御：必须是空手状态（未选中模块），且鼠标悬停在有效格子上
+        if (_selectedModuleDef != null || _currentHoverPos.x == -1) return;
+
+        // 检测左键点击
+        if (Input.GetMouseButtonDown(0))
+        {
+            Vector2Int worldPos = new Vector2Int(_currentShell.Bounds.xMin + _currentHoverPos.x, _currentShell.Bounds.yMin + _currentHoverPos.y);
+            GridCell cell = GridManager.Instance.GetGridCell(worldPos);
+
+            // 如果该格子上存在属于本机箱的模块
+            if (cell != null && cell.OccupyingModule != null && cell.OccupyingModule.ParentShell == _currentShell)
+            {
+                // 【多态寻址】：判断该模块是否为可配置端口！
+                if (cell.OccupyingModule is IConfigurablePort configurablePort)
+                {
+                    // 呼出配置面板，将该端口的规则引用传给面板
+                    if (PortConfigPanel != null)
+                    {
+                        PortConfigPanel.OpenPanel(configurablePort.GetRules());
+                    }
+                }
+            }
+        }
+    }
 }

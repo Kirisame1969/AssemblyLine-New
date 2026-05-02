@@ -50,9 +50,13 @@ namespace AssemblyLine.Data.Machine
     /// 输入匣（Input Port）的数据实体。
     /// 负责接收大世界传送带的物品并将其送入机器核心的加工队列。
     /// </summary>
-    public class InputPortData : MachineModuleData
+    public class InputPortData : MachineModuleData, IConfigurablePort
     {
         public PortRuleConfig Rules = new PortRuleConfig();
+
+        // 【新增】：实现接口方法
+        public PortRuleConfig GetRules() => Rules;
+
         /// <summary>
         /// 获取输入匣的物理吸入朝向。
         /// 通过映射模块当前的旋转状态（Rotation）得出绝对方向。
@@ -77,9 +81,12 @@ namespace AssemblyLine.Data.Machine
     /// 输出匣（Output Port）的数据实体。
     /// 负责将机器核心加工完毕的产物吐出到大世界的传送带上。
     /// </summary>
-    public class OutputPortData : MachineModuleData
+    public class OutputPortData : MachineModuleData, IConfigurablePort
     {
         public PortRuleConfig Rules = new PortRuleConfig();
+
+        public PortRuleConfig GetRules() => Rules;
+
         /// <summary>
         /// 获取输出匣的物理吐出朝向。
         /// </summary>
