@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 62e35febc4d1e9d408602dfba1af05ad, type: 3}
+  m_Name: gaoji
+  m_EditorClassIdentifier: 
+  NodeID: gaoji
+  DisplayName: "\u9AD8\u7EA7"
+  Description: 
+  Icon: {fileID: 0}
+  AxialCoords: {x: 0, y: 0}
+  UnlockCost: 0
+  Prerequisites:
+  - {fileID: 11400000, guid: 6128ce64548fa4e498602e67040190ec, type: 2}
+  - {fileID: 11400000, guid: 2648989e60cd46640939ed03b8282012, type: 2}
