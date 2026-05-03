@@ -1,0 +1,8 @@
+潜在需求分析
+在汇总与梳理当前 API 契约的过程中，发现以下将直接影响后期系统扩展的潜在需求：
+
+表现层内存与 GC 压力（对象池需求）：目前 View 层在读档或重建时（如 InteractionController.OnDataRestored）采用了直接 Destroy 与 Instantiate 的“焦土政策”。当后期工厂规模达到数万基元时，单帧销毁/创建会引发严重的 GC 停顿（卡帧）。后续必须引入全局 Object Pool（对象池）接管 View 层的视觉实体生成。
+
+异步序列化线程调度（数据快照需求）：SaveLoadManager 目前在主线程直接调用 JsonConvert.SerializeObject 和 File.WriteAllText。随着 JSON 字符串膨胀，主线程会卡死。后续需引入 Task.Run 进行异步 I/O，并要求在异步前，必须在主线程先获取一份所有 Model 的深拷贝快照，防止异步耗时期间 Tick 继续推进导致数据撕裂。
+
+存档数据结构向后兼容（版本迁移需求）：GameSnapshotData 现记录了 Version = "1.0.0"，但缺少版本迁移路由。游戏在开发迭代中 DTO 结构必将频繁变动，需预留升级适配器接口（Migration Adapter）。

@@ -3,6 +3,7 @@ using UnityEngine.UI;
 using System.Collections.Generic;
 using UnityEngine.EventSystems;
 using AssemblyLine.Data.Machine;
+using DG.Tweening;
 
 public class MachineGUIController : MonoBehaviour
 {
@@ -51,19 +52,25 @@ public class MachineGUIController : MonoBehaviour
 
     [Header("仓库库存 UI")]
     public AssemblyLine.UI.UIWarehousePanel WarehousePanel; // 拖入挂载了此脚本的 TabPages[1] 节点
+
+    [Header("UI 容器与预制体")]
+    public CanvasGroup DarkBackgroundGroup; // 【新增】：拖入刚才创建的 DarkBackground 的 CanvasGroup 组件
     
     // 【新增】：状态互斥锁，记录当前激活的是哪个分页
     private int _currentTabIndex = 0;
 
-    private void Awake()
+   private void Awake()
     {
         if (Instance == null) Instance = this;
         else Destroy(gameObject);
 
-        // 游戏开始时隐藏面板
+        // 游戏开始时隐藏面板与独立的背景层
         if (PanelRoot != null) PanelRoot.SetActive(false);
+        
+        // 【新增这一行】：确保游戏启动时背景处于关闭状态
+        if (DarkBackgroundGroup != null) DarkBackgroundGroup.gameObject.SetActive(false); 
 
-        // 【新增】：代码绑定关闭按钮事件，点 X 即可关闭
+        // 代码绑定关闭按钮事件
         if (CloseButton != null)
         {
             CloseButton.onClick.AddListener(ClosePanel);
@@ -107,6 +114,19 @@ public class MachineGUIController : MonoBehaviour
     public void OpenPanel(MachineShellData shell)
     {
         _currentShell = shell;
+
+// 【动画重构 1】：背景渐现
+        if (DarkBackgroundGroup != null)
+        {
+            DarkBackgroundGroup.gameObject.SetActive(true);
+            DarkBackgroundGroup.alpha = 0f;
+            DarkBackgroundGroup.DOFade(1f, 0.3f).SetUpdate(true);
+        }
+
+        // 【动画重构 2】：面板弹性弹出
+        PanelRoot.SetActive(true);
+        PanelRoot.transform.localScale = Vector3.zero;
+        PanelRoot.transform.DOScale(Vector3.one, 0.3f).SetEase(Ease.OutBack).SetUpdate(true);
         PanelRoot.SetActive(true);
         // 暂停游戏大世界时间 (按需)
         SimulationController.Instance.CurrentSpeed = TimeSpeed.Paused;
@@ -142,12 +162,26 @@ public class MachineGUIController : MonoBehaviour
     // 关闭面板
     public void ClosePanel()
     {
-        PanelRoot.SetActive(false);
-        _currentShell = null;
+        // 如果当前没有正在显示的机箱，直接返回防报错
+        if (_currentShell == null) return; 
 
-        // 关闭面板时，清空手里抓着的模块
-        ClearHands();
+        // 【动画重构 1】：背景渐隐
+        if (DarkBackgroundGroup != null)
+        {
+            DarkBackgroundGroup.DOFade(0f, 0.2f).SetUpdate(true).OnComplete(() => {
+                DarkBackgroundGroup.gameObject.SetActive(false);
+            });
+        }
 
+        // 【动画重构 2】：面板缩回
+        PanelRoot.transform.DOScale(Vector3.zero, 0.2f).SetEase(Ease.InBack).SetUpdate(true).OnComplete(() =>
+        {
+            PanelRoot.SetActive(false);
+            _currentShell = null;
+            // 清空手里的模块
+            ClearHands();
+        });
+            
     }
 
 
