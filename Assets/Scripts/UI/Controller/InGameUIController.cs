@@ -1,49 +1,62 @@
 using UnityEngine;
-using UnityEngine.UI;
-using AssemblyLine.Core.Manager.GameFlow; // 引入流程控制器所在的命名空间
+using AssemblyLine.Core.Manager.GameFlow; // 引用全局总线
+using AssemblyLine.Core.Manager.SaveLoad;
 
-namespace AssemblyLine.UI
+public class InGameUIController : MonoBehaviour
 {
-    /// <summary>
-    /// 表现层：游戏内 UI 总控。
-    /// 负责管理 MainGameScene 中的顶部栏、返回按钮等。
-    /// </summary>
-    public class InGameUIController : MonoBehaviour
-    {
-        [Header("UI 元素引用")]
-        [SerializeField] private Button returnToMenuButton;
+    [Header("暂停菜单引用")]
+    public PauseMenuWindow PauseMenu;
+    public PauseMenuButton BtnSave;
+    public PauseMenuButton BtnLoad;
+    public PauseMenuButton BtnSettings;
+    public PauseMenuButton BtnMainMenu;
 
-        private void Start()
+    private void Start()
+    {
+        // 1. 在场景层执行 UI 业务绑定
+        if (BtnSave != null) BtnSave.OnClickAction = () => SaveLoadManager.Instance.SaveGame("AutoSave");
+        
+        if (BtnLoad != null) BtnLoad.OnClickAction = () => {
+            // 打开子面板（代码已在 PauseMenuWindow 中实现）
+            PauseMenu.OpenSubPanel(PauseMenu.LoadPanel); 
+        };
+
+        if (BtnMainMenu != null) BtnMainMenu.OnClickAction = () => {
+            // 先通过总线切回运行状态（否则主菜单可能也是静音/停止的）
+            GameFlowManager.Instance.TogglePauseState();
+            PauseMenu.HideMenu();
+            GameFlowManager.Instance.ReturnToMainMenu();
+        };
+    }
+
+    private void Update()
+    {
+        // 2. 监听按键：这是场景级的行为
+        if (Input.GetKeyDown(KeyCode.Escape))
         {
-            // 严谨性检查：确保按钮引用已拖入
-            if (returnToMenuButton != null)
+            // 向总线申请切换状态
+            GameFlowManager.Instance.TogglePauseState();
+            
+            // 根据切换后的状态，指挥 UI 表现
+            bool isPaused = GameFlowManager.Instance.IsGamePaused;
+            
+            if (isPaused)
             {
-                // 【核心绑定】：通过代码给按钮添加监听事件
-                // 这样就不需要手动在 Inspector 里拖拽
-                returnToMenuButton.onClick.AddListener(OnReturnButtonClicked);
+                SetCameraLocked(true);
+                PauseMenu.ShowMenu();
             }
             else
             {
-                Debug.LogWarning("[InGameUIController] 返回主菜单按钮未在 Inspector 中赋值！");
+                PauseMenu.HideMenu(() => SetCameraLocked(false));
             }
         }
+    }
 
-        private void OnReturnButtonClicked()
+    private void SetCameraLocked(bool isLocked)
+    {
+        if (Camera.main != null && Camera.main.TryGetComponent(out CameraController camCtrl))
         {
-            // 呼叫控制层单例执行场景切换
-            if (GameFlowManager.Instance != null)
-            {
-                GameFlowManager.Instance.ReturnToMainMenu();
-            }
-        }
-        
-        private void OnDestroy()
-        {
-            // 良好的编程习惯：销毁时移除监听，防止内存泄漏
-            if (returnToMenuButton != null)
-            {
-                returnToMenuButton.onClick.RemoveListener(OnReturnButtonClicked);
-            }
+            camCtrl.IsControlDisabled = isLocked;
         }
     }
 }

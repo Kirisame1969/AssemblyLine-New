@@ -9,20 +9,56 @@ using AssemblyLine.Data.Machine;
 
 namespace AssemblyLine.Core.Manager.SaveLoad
 {
+
+    // 存档元数据，仅用于 UI 列表展示
+    public struct SaveFileInfo
+    {
+        public string SlotName;      // 槽位名称 (文件名)
+        public DateTime SaveTime;    // 最后修改时间
+    }
+
     /// <summary>
     /// 控制层：存读档总线。
     /// 负责聚合全图数据生成快照，或解析快照并执行严谨的“清空->重绑定”双轨复原逻辑。
     /// 绝对不包含任何表现层 (View/UI) 代码。
     /// </summary>
-    public class SaveLoadManager : MonoBehaviour
+    public partial class SaveLoadManager : MonoBehaviour
     {
         public static SaveLoadManager Instance { get; private set; }
 
         // 定义存档存放路径：操作系统持久化目录
         private string SaveDirectory => Path.Combine(Application.persistentDataPath, "Saves");
 
+
         // 全局广播事件：当读档完成，底层数据已全部就位时触发。供表现层 (UI/大世界) 监听以进行画面重绘
         public event Action OnSimulationDataRestored;
+
+
+        /// <summary>
+        /// 获取当前所有有效的存档列表 (按时间倒序)
+        /// </summary>
+        public List<SaveFileInfo> GetAvailableSaves()
+        {
+            List<SaveFileInfo> saveList = new List<SaveFileInfo>();
+            
+            if (!Directory.Exists(SaveDirectory)) return saveList;
+
+            // 获取目录下所有 .json 文件
+            string[] files = Directory.GetFiles(SaveDirectory, "*.json");
+
+            foreach (var filePath in files)
+            {
+                saveList.Add(new SaveFileInfo
+                {
+                    SlotName = Path.GetFileNameWithoutExtension(filePath),
+                    SaveTime = File.GetLastWriteTime(filePath)
+                });
+            }
+
+            // 按时间排序：最新的在前
+            saveList.Sort((a, b) => b.SaveTime.CompareTo(a.SaveTime));
+            return saveList;
+        }
 
         private void Awake()
         {

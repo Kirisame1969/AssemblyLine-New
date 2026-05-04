@@ -15,6 +15,8 @@ public class SimulationController : MonoBehaviour
     [Header("时间与流速设置")]
     public float TickRate = 0.05f;                                      // 逻辑上永远是每 0.05 秒一 Tick
     public TimeSpeed CurrentSpeed = TimeSpeed.Normal;                   // 游戏时间流速倍速
+
+    private TimeSpeed _prePauseSpeed = TimeSpeed.Normal;                // [Phase 2 新增]：缓存暂停前的流速
     private float _accumulatedTime = 0f;                                // 时间蓄水池，用来帮助计算周期，见update
     
     [Header("周期逻辑配置")]
@@ -227,6 +229,25 @@ public class SimulationController : MonoBehaviour
         if (!ActiveItems.Contains(newItem))
         {
             ActiveItems.Add(newItem);
+        }
+    }
+    
+    // [Phase 2 新增]：供 GameFlowManager 调用的状态切换接口
+    public void SetPauseState(bool isPaused)
+    {
+        if (isPaused)
+        {
+            // 仅当当前不在暂停状态时才缓存，防止连续触发导致缓存被覆盖为 Paused
+            if (CurrentSpeed != TimeSpeed.Paused) 
+            {
+                _prePauseSpeed = CurrentSpeed;
+            }
+            CurrentSpeed = TimeSpeed.Paused;
+        }
+        else
+        {
+            // 恢复缓存的流速
+            CurrentSpeed = _prePauseSpeed;
         }
     }
     

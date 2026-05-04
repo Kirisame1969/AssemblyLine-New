@@ -2,6 +2,7 @@ using System.Collections;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using AssemblyLine.Core.Manager.SaveLoad;
+using AssemblyLine.Core.Manager.Audio;
 using DG.Tweening;
 
 namespace AssemblyLine.Core.Manager.GameFlow
@@ -10,16 +11,43 @@ namespace AssemblyLine.Core.Manager.GameFlow
     {
         public static GameFlowManager Instance { get; private set; }
 
-        [Header("UI 过渡")]
-        public CanvasGroup FadeCanvasGroup; // 拖入用于黑屏过渡的 CanvasGroup
+        [Header("UI 过渡 (全局不穿透黑幕)")]
+        public CanvasGroup FadeCanvasGroup; 
+
+        // 核心状态：只保留数据，不持有 UI 引用
+        public bool IsGamePaused { get; private set; } = false;
 
         private void Awake()
         {
             if (Instance == null) Instance = this;
-            else Destroy(gameObject);
-            // 注意：由于它和 Bootstrapper 挂在同一个 GlobalManagers 节点上，
-            // 它也会自动享受 DontDestroyOnLoad 的效果。
+            else { Destroy(gameObject); return; }
         }
+
+        /// <summary>
+        /// 核心切换方法：仅处理逻辑状态与全局总线调度
+        /// </summary>
+        public void TogglePauseState()
+        {
+            // 如果正在黑屏转场，禁止切换状态
+            if (FadeCanvasGroup != null && FadeCanvasGroup.gameObject.activeSelf) return;
+
+            IsGamePaused = !IsGamePaused;
+
+            // 1. 驱动底层模拟系统 (SimulationController)
+            if (SimulationController.Instance != null)
+            {
+                SimulationController.Instance.SetPauseState(IsGamePaused);
+            }
+
+            // 2. 驱动音频总线 (AudioManager)
+            if (AudioManager.Instance != null)
+            {
+                AudioManager.Instance.SetAudioPauseState(IsGamePaused);
+            }
+            
+            Debug.Log($"[GameFlow] 全局暂停状态已切换为: {IsGamePaused}");
+        }
+
 
         // ==========================================
         // 外部流转接口
