@@ -237,6 +237,10 @@ public class TechTreeGridUI : MonoBehaviour, IPointerClickHandler
     // ==========================================
     private void OnNodeDoubleClicked(string nodeId)
     {
+        // 1. 防御性拦截
+        if (string.IsNullOrEmpty(nodeId)) return;
+        if (TechManager.Instance == null) return;
+
         if (_currentFocusedNode == nodeId)
         {
             ClearFocus();
@@ -246,13 +250,42 @@ public class TechTreeGridUI : MonoBehaviour, IPointerClickHandler
         _currentFocusedNode = nodeId;
         HashSet<string> focusedSet = TechManager.Instance.GetFocusedNodes(nodeId, 2);
 
+        // 即使出错返回了null，也强制初始化防止下游崩溃
+        if (focusedSet == null) focusedSet = new HashSet<string>();
+
+        // 2. 节点明暗切分 (强制对象非空校验)
         foreach (var kvp in _nodeCanvasGroups)
         {
-            kvp.Value.alpha = focusedSet.Contains(kvp.Key) ? 1f : 0.2f;
+            if (kvp.Value != null)
+            {
+                kvp.Value.alpha = focusedSet.Contains(kvp.Key) ? 1f : 0.2f;
+            }
         }
+
+        // 3. 跨距虚线动态显隐 (强制对象非空校验)
         foreach (var line in _dashedLines)
         {
-            line.LineObj.SetActive(focusedSet.Contains(line.StartId) && focusedSet.Contains(line.EndId));
+            if (line != null && line.LineObj != null)
+            {
+                line.LineObj.SetActive(focusedSet.Contains(line.StartId) && focusedSet.Contains(line.EndId));
+            }
+        }
+    }
+
+    private void ClearFocus()
+    {
+        _currentFocusedNode = null;
+
+        // 恢复节点高亮
+        foreach (var kvp in _nodeCanvasGroups)
+        {
+            if (kvp.Value != null) kvp.Value.alpha = 1f;
+        }
+
+        // 退出时隐藏所有虚线
+        foreach (var line in _dashedLines)
+        {
+            if (line != null && line.LineObj != null) line.LineObj.SetActive(false);
         }
     }
 
@@ -261,12 +294,7 @@ public class TechTreeGridUI : MonoBehaviour, IPointerClickHandler
         if (eventData.clickCount == 2) ClearFocus();
     }
 
-    private void ClearFocus()
-    {
-        _currentFocusedNode = null;
-        foreach (var kvp in _nodeCanvasGroups) kvp.Value.alpha = 1f;
-        foreach (var line in _dashedLines) line.LineObj.SetActive(false);
-    }
+    
 
     public void CloseTechTreeUI() { gameObject.SetActive(false); }
 

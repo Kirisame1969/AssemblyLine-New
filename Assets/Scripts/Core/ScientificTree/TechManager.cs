@@ -114,10 +114,13 @@ public class TechManager : MonoBehaviour
     // 双击聚焦算法：BFS 宽度优先遍历
     // 寻找向上与向下各延伸 N 级的节点集合
     // ==========================================
+    // ==========================================
+    // 双击聚焦算法：BFS 宽度优先遍历 (已加入极限防御)
+    // ==========================================
     public HashSet<string> GetFocusedNodes(string centerId, int depth = 2)
     {
         HashSet<string> result = new HashSet<string>();
-        if (!_nodeDict.ContainsKey(centerId)) return result;
+        if (string.IsNullOrEmpty(centerId) || !_nodeDict.ContainsKey(centerId)) return result;
 
         // 向前遍历（祖先节点）
         Queue<(string id, int dist)> queue = new Queue<(string, int)>();
@@ -130,10 +133,17 @@ public class TechManager : MonoBehaviour
 
             if (curr.dist < depth && _nodeDict.TryGetValue(curr.id, out var node))
             {
-                for (int i = 0; i < node.Prerequisites.Count; i++)
+                if (node.Prerequisites != null)
                 {
-                    string preId = node.Prerequisites[i].NodeID;
-                    if (!result.Contains(preId)) queue.Enqueue((preId, curr.dist + 1));
+                    for (int i = 0; i < node.Prerequisites.Count; i++)
+                    {
+                        var pre = node.Prerequisites[i];
+                        // 【核心防御】：拦截 Inspector 中未拖入文件的空洞 (None)
+                        if (pre != null && !string.IsNullOrEmpty(pre.NodeID))
+                        {
+                            if (!result.Contains(pre.NodeID)) queue.Enqueue((pre.NodeID, curr.dist + 1));
+                        }
+                    }
                 }
             }
         }
@@ -149,10 +159,17 @@ public class TechManager : MonoBehaviour
 
             if (curr.dist < depth && _successorsMap.TryGetValue(curr.id, out var successors))
             {
-                for (int i = 0; i < successors.Count; i++)
+                if (successors != null)
                 {
-                    string succId = successors[i];
-                    if (!result.Contains(succId)) queue.Enqueue((succId, curr.dist + 1));
+                    for (int i = 0; i < successors.Count; i++)
+                    {
+                        string succId = successors[i];
+                        // 【核心防御】：防止子节点映射出异常
+                        if (!string.IsNullOrEmpty(succId) && !result.Contains(succId))
+                        {
+                            queue.Enqueue((succId, curr.dist + 1));
+                        }
+                    }
                 }
             }
         }
