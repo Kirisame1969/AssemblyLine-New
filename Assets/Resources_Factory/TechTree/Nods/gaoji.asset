@@ -14,10 +14,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   NodeID: gaoji
   DisplayName: "\u9AD8\u7EA7"
-  Description: 
+  Description: "\u9AD8\u7EA7\u9AD8\u7EA7\u597D\u51E0"
   Icon: {fileID: 0}
-  AxialCoords: {x: 0, y: 0}
+  AxialCoords: {x: 4, y: 3}
   UnlockCost: 0
-  Prerequisites:
-  - {fileID: 11400000, guid: 6128ce64548fa4e498602e67040190ec, type: 2}
-  - {fileID: 11400000, guid: 2648989e60cd46640939ed03b8282012, type: 2}
+  Prerequisites: []

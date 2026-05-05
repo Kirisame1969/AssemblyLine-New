@@ -98,7 +98,8 @@ public class TechTreeGridUI : MonoBehaviour, IPointerClickHandler
         {
             PanController.SetBounds(new Vector2(-maxX - padding, -maxY - padding), new Vector2(-minX + padding, -minY + padding));
         }
-
+        // 2. 第二次遍历：生成依赖连线
+        
         for (int i = 0; i < allNodes.Count; i++)
         {
             var data = allNodes[i];

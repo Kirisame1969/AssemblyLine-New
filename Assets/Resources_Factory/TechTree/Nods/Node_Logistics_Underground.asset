@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   NodeID: tech_logistics_underground
   DisplayName: "\u5730\u4E0B\u4F20\u9001\u5E26"
-  Description: 
+  Description: "\u5E95\u4E0B\u51FA\u554A\u5B8B\u4EE3"
   Icon: {fileID: 0}
   AxialCoords: {x: 1, y: -1}
   UnlockCost: 300

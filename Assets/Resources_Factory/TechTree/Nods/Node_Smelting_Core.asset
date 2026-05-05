@@ -14,8 +14,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   NodeID: Smelting
   DisplayName: "\u6838\u5FC3\u51B6\u70BC"
-  Description: 
+  Description: "\u6838\u5FC3"
   Icon: {fileID: 0}
   AxialCoords: {x: -1, y: 0}
   UnlockCost: 150
-  Prerequisites: []
+  Prerequisites:
+  - {fileID: 11400000, guid: 443f63d0016f0a643a22a4c495090242, type: 2}
