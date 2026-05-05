@@ -14,36 +14,82 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   ProfileID: shell_test_1
   DisplayName: "\u6D4B\u8BD5\u673A\u58F3"
-  LogicWidth: 2
-  LogicHeight: 2
-  DeadCells: []
+  LogicWidth: 3
+  LogicHeight: 3
+  DeadCells:
+  - {x: 1, y: 1}
+  - {x: 1, y: 2}
   PartitionWalls:
   - CellA: {x: 0, y: 0}
-    CellB: {x: 1, y: 0}
+    CellB: {x: 0, y: 1}
+  - CellA: {x: 0, y: 1}
+    CellB: {x: 0, y: 2}
+  - CellA: {x: 1, y: 0}
+    CellB: {x: 1, y: 1}
+  - CellA: {x: 2, y: 0}
+    CellB: {x: 2, y: 1}
   - CellA: {x: 0, y: 1}
     CellB: {x: 1, y: 1}
+  - CellA: {x: 1, y: 1}
+    CellB: {x: 2, y: 1}
+  - CellA: {x: 2, y: 1}
+    CellB: {x: 2, y: 2}
+  - CellA: {x: 0, y: 2}
+    CellB: {x: 1, y: 2}
+  - CellA: {x: 1, y: 2}
+    CellB: {x: 2, y: 2}
   VisualConfigs:
   - LogicalPos: {x: 0, y: 0}
-    VisualOffset: {x: 0, y: 0}
-    ConnectTop: 1
+    VisualOffset: {x: -64, y: 80}
+    ConnectTop: 0
+    ConnectBottom: 0
+    ConnectLeft: 0
+    ConnectRight: 1
+  - LogicalPos: {x: 1, y: 0}
+    VisualOffset: {x: 0, y: 80}
+    ConnectTop: 0
+    ConnectBottom: 0
+    ConnectLeft: 1
+    ConnectRight: 1
+  - LogicalPos: {x: 2, y: 0}
+    VisualOffset: {x: 64, y: 80}
+    ConnectTop: 0
+    ConnectBottom: 0
+    ConnectLeft: 1
+    ConnectRight: 0
+  - LogicalPos: {x: 0, y: 1}
+    VisualOffset: {x: -72, y: 0}
+    ConnectTop: 0
     ConnectBottom: 0
     ConnectLeft: 0
     ConnectRight: 0
-  - LogicalPos: {x: 0, y: 1}
-    VisualOffset: {x: 0, y: 64}
+  - LogicalPos: {x: 0, y: 2}
+    VisualOffset: {x: -72, y: -80}
     ConnectTop: 0
-    ConnectBottom: 1
-    ConnectLeft: 0
-    ConnectRight: 0
-  - LogicalPos: {x: 1, y: 0}
-    VisualOffset: {x: 80, y: 0}
-    ConnectTop: 1
     ConnectBottom: 0
     ConnectLeft: 0
     ConnectRight: 0
   - LogicalPos: {x: 1, y: 1}
-    VisualOffset: {x: 80, y: 64}
+    VisualOffset: {x: 0, y: 0}
     ConnectTop: 0
     ConnectBottom: 1
+    ConnectLeft: 0
+    ConnectRight: 0
+  - LogicalPos: {x: 1, y: 2}
+    VisualOffset: {x: 0, y: -64}
+    ConnectTop: 1
+    ConnectBottom: 0
+    ConnectLeft: 0
+    ConnectRight: 0
+  - LogicalPos: {x: 2, y: 1}
+    VisualOffset: {x: 72, y: 0}
+    ConnectTop: 0
+    ConnectBottom: 0
+    ConnectLeft: 0
+    ConnectRight: 0
+  - LogicalPos: {x: 2, y: 2}
+    VisualOffset: {x: 72, y: -80}
+    ConnectTop: 0
+    ConnectBottom: 0
     ConnectLeft: 0
     ConnectRight: 0

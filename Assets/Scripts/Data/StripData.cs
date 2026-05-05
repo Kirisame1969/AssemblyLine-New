@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using AssemblyLine.Data.SaveData;
 
 public class StripData
 {
@@ -20,5 +21,33 @@ public class StripData
 
         // 【新增】随机生成一个高饱和度、高亮度的颜色，确保在深色背景下也能看清
         StripColor = UnityEngine.Random.ColorHSV(0f, 1f, 0.8f, 1f, 0.8f, 1f);
+    }
+    // ==========================================
+    // 存档扩展方法
+    // ==========================================
+    public StripSaveData ToSaveData()
+    {
+        return new StripSaveData
+        {
+            StripID = this.StripID,
+            MoveSpeed = this.MoveSpeed,
+            Cells = new List<Vector2Int>(this.Cells),
+            StripColorHex = ColorUtility.ToHtmlStringRGBA(this.StripColor)
+        };
+    }
+
+    public static StripData CreateFromSaveData(StripSaveData data)
+    {
+        var strip = new StripData();
+        strip.StripID = data.StripID;
+        strip.MoveSpeed = data.MoveSpeed;
+        if (data.Cells != null) strip.Cells = new List<Vector2Int>(data.Cells);
+        
+        // 恢复颜色
+        if (!string.IsNullOrEmpty(data.StripColorHex) && ColorUtility.TryParseHtmlString("#" + data.StripColorHex, out Color color))
+        {
+            strip.StripColor = color;
+        }
+        return strip;
     }
 }

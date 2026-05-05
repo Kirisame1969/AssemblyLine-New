@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
-
+using AssemblyLine.Data.Machine;
 // ==========================================
 // 1. 机器当前属性面板 (Data层契约)
 // 用于汇总当前机箱内所有模块提供的 Buff

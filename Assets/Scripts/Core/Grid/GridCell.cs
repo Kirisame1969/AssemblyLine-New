@@ -1,5 +1,5 @@
 using UnityEngine;
-
+using AssemblyLine.Data.Machine;
 // 这是一个纯数据类，不挂载到任何 GameObject 上
 public class GridCell
 {

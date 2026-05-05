@@ -1,6 +1,7 @@
 using System;
 using UnityEngine;
 using System.Collections.Generic;
+using AssemblyLine.Data.Machine;
 
 // 定义时间流速枚举 (利用整型作为乘数倍率)
 public enum TimeSpeed { Paused = 0, Normal = 1, Fast = 2, SuperFast = 5 }
@@ -14,6 +15,8 @@ public class SimulationController : MonoBehaviour
     [Header("时间与流速设置")]
     public float TickRate = 0.05f;                                      // 逻辑上永远是每 0.05 秒一 Tick
     public TimeSpeed CurrentSpeed = TimeSpeed.Normal;                   // 游戏时间流速倍速
+
+    private TimeSpeed _prePauseSpeed = TimeSpeed.Normal;                // [Phase 2 新增]：缓存暂停前的流速
     private float _accumulatedTime = 0f;                                // 时间蓄水池，用来帮助计算周期，见update
     
     [Header("周期逻辑配置")]
@@ -28,6 +31,9 @@ public class SimulationController : MonoBehaviour
     // 活跃物品名单。系统只关心这里的物品。
     public List<ItemData> ActiveItems = new List<ItemData>(); 
 
+    // 【新增】：当物品由于某种原因（被吞噬、掉落、销毁）从逻辑中移除时触发
+    // 供表现层监听并清理对应的视觉实体
+    public event Action<ItemData> OnItemLogicRemoved;
     
 
     private void Awake()
@@ -50,7 +56,7 @@ public class SimulationController : MonoBehaviour
         }
 
         // 无论是否暂停，画面渲染插值照常进行，确保视觉平滑
-        UpdateItemVisuals();
+        // UpdateItemVisuals();
     }
 
     private void PerformTick()//update中调用
@@ -105,7 +111,7 @@ public class SimulationController : MonoBehaviour
 
                 if (nextCell != null)
                 {
-
+                    /*
                     // ====================================================
                     // 🩺 诊断探针开始：打印前方的物理真实情况
                     // ====================================================
@@ -134,7 +140,7 @@ public class SimulationController : MonoBehaviour
                         }
                     }
                     // ====================================================
-
+                    */
 
 
                     // ====================================================
@@ -152,8 +158,8 @@ public class SimulationController : MonoBehaviour
                             // 2. 物理除名：从活跃移动名单中剔除（因为是倒序遍历，这里 RemoveAt 是绝对安全的）
                             ActiveItems.RemoveAt(i);
 
-                            // 3. 视觉销毁：通知 UI 控制器删掉画面上的精灵贴图
-                            InteractionController.Instance.DestroyItemVisual(item); 
+                            // 仅通知事件，不直接指挥表现层
+                            OnItemLogicRemoved?.Invoke(item);
                             
                             continue; // 成功喂食，立刻跳过当前物品的处理，去处理下一个物品！
                         }
@@ -206,6 +212,7 @@ public class SimulationController : MonoBehaviour
         }
     }
 
+    /*
     // --- 预留给表现层的更新方法 ---
     private void UpdateItemVisuals()
     {
@@ -215,13 +222,32 @@ public class SimulationController : MonoBehaviour
             InteractionController.Instance.RenderItems();
         }
     }
-    
+    */
     // 注册新物品的方法
     public void RegisterItem(ItemData newItem)
     {
         if (!ActiveItems.Contains(newItem))
         {
             ActiveItems.Add(newItem);
+        }
+    }
+    
+    // [Phase 2 新增]：供 GameFlowManager 调用的状态切换接口
+    public void SetPauseState(bool isPaused)
+    {
+        if (isPaused)
+        {
+            // 仅当当前不在暂停状态时才缓存，防止连续触发导致缓存被覆盖为 Paused
+            if (CurrentSpeed != TimeSpeed.Paused) 
+            {
+                _prePauseSpeed = CurrentSpeed;
+            }
+            CurrentSpeed = TimeSpeed.Paused;
+        }
+        else
+        {
+            // 恢复缓存的流速
+            CurrentSpeed = _prePauseSpeed;
         }
     }
     
