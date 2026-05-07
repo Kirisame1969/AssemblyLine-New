@@ -1,0 +1,22 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 62e35febc4d1e9d408602dfba1af05ad, type: 3}
+  m_Name: Metal copper
+  m_EditorClassIdentifier: 
+  NodeID: Metal copper
+  DisplayName: "\u94DC"
+  Description: "\u5BFC\u7535\u597D\u6750\u6599"
+  Icon: {fileID: 0}
+  AxialCoords: {x: 31, y: 31}
+  UnlockCost: 0
+  Prerequisites:
+  - {fileID: 11400000, guid: 6a4cc5640f0b0a34e85724d4f4b5a939, type: 2}

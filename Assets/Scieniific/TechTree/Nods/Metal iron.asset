@@ -1,0 +1,22 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 62e35febc4d1e9d408602dfba1af05ad, type: 3}
+  m_Name: Metal iron
+  m_EditorClassIdentifier: 
+  NodeID: Metal iron
+  DisplayName: "\u94C1"
+  Description: "\u6765\u70B9\u786C\u7684\uFF1F"
+  Icon: {fileID: 0}
+  AxialCoords: {x: 29, y: 30}
+  UnlockCost: 0
+  Prerequisites:
+  - {fileID: 11400000, guid: 6a4cc5640f0b0a34e85724d4f4b5a939, type: 2}

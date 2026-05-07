@@ -6,6 +6,11 @@ using TMPro; // 引入 TextMeshPro 命名空间
 
 public class TechTreeGridUI : MonoBehaviour, IPointerClickHandler
 {
+    // ==========================================
+    // 1. 新增极简单例，方便总控呼叫
+    // ==========================================
+    public static TechTreeGridUI Instance { get; private set; }
+
     [Header("UI 容器引用")]
     public RectTransform NodesContainer;
     public RectTransform LinesContainer;
@@ -44,11 +49,20 @@ public class TechTreeGridUI : MonoBehaviour, IPointerClickHandler
     private string _currentFocusedNode = null;
     private string _currentSelectedNode = null; // 当前单击选中的节点
 
+    private void Awake()
+    {
+        if (Instance == null) Instance = this;
+        else Destroy(gameObject);
+    }
     private void Start()
     {
         // 初始状态下清空右侧面板
         ClearInfoPanel();
         GenerateGrid();
+        // ==========================================
+        // 2. 初始状态隐身：在 Awake 注册、Start 生成完网格后，立刻隐藏自己
+        // ==========================================
+        gameObject.SetActive(false);
     }
 
     private void GenerateGrid()
@@ -128,6 +142,16 @@ public class TechTreeGridUI : MonoBehaviour, IPointerClickHandler
         }
     }
 
+    // ==========================================
+    // 3. 新增公共开关方法 (供快捷键和外部按钮调用)
+    // ==========================================
+    public void ToggleTechTreeUI()
+    {
+        gameObject.SetActive(!gameObject.activeSelf);
+
+        
+    }
+
     private int GetHexDistance(Vector2Int a, Vector2Int b)
     {
         return (Mathf.Abs(a.x - b.x) +
@@ -140,12 +164,15 @@ public class TechTreeGridUI : MonoBehaviour, IPointerClickHandler
         GameObject lineObj = Instantiate(DashedLinePrefab, LinesContainer);
         RectTransform rect = lineObj.GetComponent<RectTransform>();
 
+        // 【新增防御】：强制洗掉预制体可能带入的错误缩放
+        rect.localScale = Vector3.one;
+
         Vector2 dir = endPos - startPos;
         float distance = dir.magnitude;
         float angle = Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg;
 
         rect.anchoredPosition = startPos;
-        rect.sizeDelta = new Vector2(distance, 4f);
+        rect.sizeDelta = new Vector2(distance, 4f); // 4f 是线宽，可调
         rect.localRotation = Quaternion.Euler(0, 0, angle);
 
         return lineObj;

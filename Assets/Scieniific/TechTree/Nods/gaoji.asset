@@ -16,6 +16,6 @@ MonoBehaviour:
   DisplayName: "\u9AD8\u7EA7"
   Description: "\u9AD8\u7EA7\u9AD8\u7EA7\u597D\u51E0"
   Icon: {fileID: 0}
-  AxialCoords: {x: 4, y: 3}
+  AxialCoords: {x: 3, y: 3}
   UnlockCost: 0
   Prerequisites: []
