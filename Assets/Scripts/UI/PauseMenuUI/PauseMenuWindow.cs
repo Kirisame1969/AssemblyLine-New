@@ -26,6 +26,10 @@ public class PauseMenuWindow : MonoBehaviour
     private bool _isMenuOpen = false;
     private Sequence _transitionSequence;
 
+    // 【新增】：将位置参数暴露给面板，告别写死的魔法数字
+    public float SidebarTargetPosX = 100f;  // 展开时距离左边缘的距离
+    public float SidebarHiddenPosX = -600f; // 隐藏时藏在屏幕外的距离（稍微加大一点确保完全藏住）
+    
     // 当前激活的子面板
     private RectTransform _currentActivePanel = null;
 
@@ -37,7 +41,8 @@ public class PauseMenuWindow : MonoBehaviour
         TopBlackBar.anchoredPosition = new Vector2(0, TopBlackBar.rect.height);
         BottomBlackBar.anchoredPosition = new Vector2(0, -BottomBlackBar.rect.height);
         SidebarCanvasGroup.alpha = 0f;
-        SidebarTransform.anchoredPosition = new Vector2(-500f, 0); 
+        // 【修改】：使用变量初始化隐藏位置
+        SidebarTransform.anchoredPosition = new Vector2(SidebarHiddenPosX, 0);
         
         // 初始化所有子面板状态（隐藏在右侧屏幕外）
         InitSubPanel(SavePanel);
@@ -110,7 +115,8 @@ public class PauseMenuWindow : MonoBehaviour
 
         _transitionSequence.Join(TopBlackBar.DOAnchorPosY(0, AnimationDuration).SetEase(Ease.OutCubic));
         _transitionSequence.Join(BottomBlackBar.DOAnchorPosY(0, AnimationDuration).SetEase(Ease.OutCubic));
-        _transitionSequence.Join(SidebarTransform.DOAnchorPosX(0, AnimationDuration).SetEase(Ease.OutCubic));
+        // 【修改】：滑入动画的目标值改为 SidebarTargetPosX
+        _transitionSequence.Join(SidebarTransform.DOAnchorPosX(SidebarTargetPosX, AnimationDuration).SetEase(Ease.OutCubic));
         _transitionSequence.Join(SidebarCanvasGroup.DOFade(1f, AnimationDuration));
     }
 
@@ -137,7 +143,8 @@ public class PauseMenuWindow : MonoBehaviour
 
         _transitionSequence.Join(TopBlackBar.DOAnchorPosY(TopBlackBar.rect.height, AnimationDuration).SetEase(Ease.InCubic));
         _transitionSequence.Join(BottomBlackBar.DOAnchorPosY(-BottomBlackBar.rect.height, AnimationDuration).SetEase(Ease.InCubic));
-        _transitionSequence.Join(SidebarTransform.DOAnchorPosX(-500f, AnimationDuration).SetEase(Ease.InCubic));
+        // 【修改】：退场动画的目标值改为 SidebarHiddenPosX
+        _transitionSequence.Join(SidebarTransform.DOAnchorPosX(SidebarHiddenPosX, AnimationDuration).SetEase(Ease.InCubic));
         _transitionSequence.Join(SidebarCanvasGroup.DOFade(0f, AnimationDuration).SetEase(Ease.InCubic));
 
         _transitionSequence.OnComplete(() => {

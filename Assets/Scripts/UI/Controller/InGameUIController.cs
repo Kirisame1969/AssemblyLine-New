@@ -1,5 +1,6 @@
 using UnityEngine;
-using AssemblyLine.Core.Manager.GameFlow; // 引用全局总线
+using System;
+using AssemblyLine.Core.Manager.GameFlow;
 using AssemblyLine.Core.Manager.SaveLoad;
 
 public class InGameUIController : MonoBehaviour
@@ -11,18 +12,65 @@ public class InGameUIController : MonoBehaviour
     public PauseMenuButton BtnSettings;
     public PauseMenuButton BtnMainMenu;
 
+    [Header("子面板控制器")]
+    public UISaveLoadPanel LoadPanelController;
+
+    [Header("弹窗引用")]
+    public UIConfirmationPopup GeneralPopup;
+
+    // 【核心修复】：将回调函数缓存为委托变量，防止刷新列表时失去指针导致卡片失效
+    private Action<string, bool> _onSaveCardClicked;
+    private Action<string, bool> _onLoadCardClicked;
+
     private void Start()
     {
-        // 1. 在场景层执行 UI 业务绑定
-        if (BtnSave != null) BtnSave.OnClickAction = () => SaveLoadManager.Instance.SaveGame("AutoSave");
-        
+        // ==========================================
+        // 1. 初始化委托路由规则 (绝对隔离：在弹窗确认前，绝不调用 SaveGame)
+        // ==========================================
+        _onSaveCardClicked = (slotName, isNew) => 
+        {
+            if (isNew)
+            {
+                string defaultName = "Save_" + DateTime.Now.ToString("yyyyMMdd_HHmm");
+                GeneralPopup.Show("新建存档", defaultName, (newName) => {
+                    if (!string.IsNullOrEmpty(newName))
+                    {
+                        SaveLoadManager.Instance.SaveGame(newName);
+                        // 使用缓存的委托重新刷新列表，保证新生成的卡片依然可以点击！
+                        LoadPanelController.RefreshList(SaveLoadMode.Save, _onSaveCardClicked); 
+                    }
+                });
+            }
+            else
+            {
+                GeneralPopup.Show($"确认覆盖存档 {slotName} 吗？", null, (unused) => {
+                    SaveLoadManager.Instance.SaveGame(slotName);
+                    LoadPanelController.RefreshList(SaveLoadMode.Save, _onSaveCardClicked);
+                });
+            }
+        };
+
+        _onLoadCardClicked = (slotName, isNew) => 
+        {
+            GameFlowManager.Instance.TogglePauseState();
+            PauseMenu.HideMenu(() => SetCameraLocked(false));
+            SaveLoadManager.Instance.LoadGame(slotName);
+        };
+
+        // ==========================================
+        // 2. 绑定侧边栏主干按钮
+        // ==========================================
+        if (BtnSave != null) BtnSave.OnClickAction = () => {
+            PauseMenu.OpenSubPanel(PauseMenu.SavePanel);
+            if (LoadPanelController != null) LoadPanelController.RefreshList(SaveLoadMode.Save, _onSaveCardClicked);
+        };
+
         if (BtnLoad != null) BtnLoad.OnClickAction = () => {
-            // 打开子面板（代码已在 PauseMenuWindow 中实现）
-            PauseMenu.OpenSubPanel(PauseMenu.LoadPanel); 
+            PauseMenu.OpenSubPanel(PauseMenu.LoadPanel);
+            if (LoadPanelController != null) LoadPanelController.RefreshList(SaveLoadMode.Load, _onLoadCardClicked);
         };
 
         if (BtnMainMenu != null) BtnMainMenu.OnClickAction = () => {
-            // 先通过总线切回运行状态（否则主菜单可能也是静音/停止的）
             GameFlowManager.Instance.TogglePauseState();
             PauseMenu.HideMenu();
             GameFlowManager.Instance.ReturnToMainMenu();
@@ -31,15 +79,13 @@ public class InGameUIController : MonoBehaviour
 
     private void Update()
     {
-        // 2. 监听按键：这是场景级的行为
         if (Input.GetKeyDown(KeyCode.Escape))
         {
-            // 向总线申请切换状态
+            if (GameFlowManager.Instance == null || PauseMenu == null) return;
+
             GameFlowManager.Instance.TogglePauseState();
-            
-            // 根据切换后的状态，指挥 UI 表现
             bool isPaused = GameFlowManager.Instance.IsGamePaused;
-            
+
             if (isPaused)
             {
                 SetCameraLocked(true);

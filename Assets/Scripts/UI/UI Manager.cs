@@ -1,47 +1,48 @@
 using UnityEngine;
-using UnityEngine.UI; // ±ØÐëÒýÈëUIÃüÃû¿Õ¼ä£¬²ÅÄÜÊ¹ÓÃ Button Àà
+using UnityEngine.UI; // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½UIï¿½ï¿½ï¿½ï¿½ï¿½Õ¼ä£¬ï¿½ï¿½ï¿½ï¿½Ê¹ï¿½ï¿½ Button ï¿½ï¿½
 
 public class UIManager : MonoBehaviour
 {
-    [Header("UI Ãæ°åÒýÓÃ")]
-    public GameObject myPanel;      // »­²¼¶þÖÐÐèÒªÒþ²Ø/ÏÔÊ¾µÄÃæ°å
+    [Header("UI ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½")]
+    public GameObject myPanel;      // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Òªï¿½ï¿½ï¿½ï¿½/ï¿½ï¿½Ê¾ï¿½ï¿½ï¿½ï¿½ï¿½
 
-    [Header("°´Å¥ÒýÓÃ")]
-    public Button openButton;       // »­²¼Ò»ÖÐµÄ¡°´ò¿ª¡±°´Å¥
-    public Button closeButton;      // »­²¼¶þÃæ°åÖÐµÄ¡°¹Ø±Õ¡±°´Å¥
+    [Header("ï¿½ï¿½Å¥ï¿½ï¿½ï¿½ï¿½")]
+    public Button openButton;       // ï¿½ï¿½ï¿½ï¿½Ò»ï¿½ÐµÄ¡ï¿½ï¿½ò¿ª¡ï¿½ï¿½ï¿½Å¥
+    public Button closeButton;
+    public Button Buttonclose;      // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ÐµÄ¡ï¿½ï¿½Ø±Õ¡ï¿½ï¿½ï¿½Å¥
 
     void Start()
     {
-        // 1. ÓÎÏ·¿ªÊ¼Ê±£¬³õÊ¼Òþ²ØÃæ°å£¨¼Ì³Ð×Ô·½·¨¶þ£©
+        // 1. ï¿½ï¿½Ï·ï¿½ï¿½Ê¼Ê±ï¿½ï¿½ï¿½ï¿½Ê¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½å£¨ï¿½Ì³ï¿½ï¿½Ô·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
         if (myPanel != null)
         {
             myPanel.SetActive(false);
         }
 
-        // 2. Îª¡°´ò¿ª¡±°´Å¥°ó¶¨µã»÷ÊÂ¼þ
+        // 2. Îªï¿½ï¿½ï¿½ò¿ª¡ï¿½ï¿½ï¿½Å¥ï¿½ó¶¨µï¿½ï¿½ï¿½Â¼ï¿½
         if (openButton != null)
         {
-            // µ± openButton ±»µã»÷Ê±£¬Ö´ÐÐ OpenPanel ·½·¨
+            // ï¿½ï¿½ openButton ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½Ö´ï¿½ï¿½ OpenPanel ï¿½ï¿½ï¿½ï¿½
             openButton.onClick.AddListener(OpenPanel);
         }
 
-        // 3. Îª¡°¹Ø±Õ¡±°´Å¥°ó¶¨µã»÷ÊÂ¼þ
+        // 3. Îªï¿½ï¿½ï¿½Ø±Õ¡ï¿½ï¿½ï¿½Å¥ï¿½ó¶¨µï¿½ï¿½ï¿½Â¼ï¿½
         if (closeButton != null)
         {
-            // µ± closeButton ±»µã»÷Ê±£¬Ö´ÐÐ ClosePanel ·½·¨
+            // ï¿½ï¿½ closeButton ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½Ö´ï¿½ï¿½ ClosePanel ï¿½ï¿½ï¿½ï¿½
             closeButton.onClick.AddListener(ClosePanel);
         }
     }
 
-    // --- ÏÂÃæÊÇ¾ßÌåµÄÖ´ÐÐ·½·¨ ---
+    // --- ï¿½ï¿½ï¿½ï¿½ï¿½Ç¾ï¿½ï¿½ï¿½ï¿½Ö´ï¿½Ð·ï¿½ï¿½ï¿½ ---
 
-    // ´ò¿ªÃæ°åµÄ·½·¨
+    // ï¿½ï¿½ï¿½ï¿½ï¿½Ä·ï¿½ï¿½ï¿½
     void OpenPanel()
     {
         myPanel.SetActive(true);
     }
 
-    // ¹Ø±ÕÃæ°åµÄ·½·¨
+    // ï¿½Ø±ï¿½ï¿½ï¿½ï¿½Ä·ï¿½ï¿½ï¿½
     void ClosePanel()
     {
         myPanel.SetActive(false);
