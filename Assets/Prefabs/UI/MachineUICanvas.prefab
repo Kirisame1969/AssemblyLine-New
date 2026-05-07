@@ -1482,8 +1482,8 @@ MonoBehaviour:
       m_Calls: []
   m_text: This is the place for writing future output statistics
   m_isRightToLeft: 0
-  m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
-  m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
+  m_fontAsset: {fileID: 11400000, guid: cd7d7f8b304485c4f8ba302e1cee29fb, type: 2}
+  m_sharedMaterial: {fileID: -3635400815661602693, guid: cd7d7f8b304485c4f8ba302e1cee29fb, type: 2}
   m_fontSharedMaterials: []
   m_fontMaterial: {fileID: 0}
   m_fontMaterials: []
@@ -1652,8 +1652,8 @@ MonoBehaviour:
       m_Calls: []
   m_text: 
   m_isRightToLeft: 0
-  m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
-  m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
+  m_fontAsset: {fileID: 11400000, guid: cd7d7f8b304485c4f8ba302e1cee29fb, type: 2}
+  m_sharedMaterial: {fileID: -3635400815661602693, guid: cd7d7f8b304485c4f8ba302e1cee29fb, type: 2}
   m_fontSharedMaterials: []
   m_fontMaterial: {fileID: 0}
   m_fontMaterials: []
@@ -1820,17 +1820,20 @@ MonoBehaviour:
   BaseCellSize: 64
   ViewportSize: {x: 600, y: 600}
   TestModuleDef: {fileID: 11400000, guid: 1115ce4f07b272946a2c419447b36ca7, type: 2}
+  CurrentCatalog: {fileID: 11400000, guid: 152f6f47c4078fc43b8f3701cbfc51de, type: 2}
+  SidebarContent: {fileID: 8498722462051235599}
+  UIModuleEntryPrefab: {fileID: 3584349660158026951, guid: 946d5127ba68e1245920d9ffead5f704, type: 3}
+  DragGhost: {fileID: 5032692583979251216}
+  DragGhostImage: {fileID: 488884233441597601}
   TabButtons:
   - {fileID: 5351234694989665075}
   - {fileID: 8887073211186092814}
   TabPages:
   - {fileID: 7373470539693759053}
   - {fileID: 464702115785454106}
-  CurrentCatalog: {fileID: 11400000, guid: 152f6f47c4078fc43b8f3701cbfc51de, type: 2}
-  SidebarContent: {fileID: 8498722462051235599}
-  UIModuleEntryPrefab: {fileID: 3584349660158026951, guid: 946d5127ba68e1245920d9ffead5f704, type: 3}
-  DragGhost: {fileID: 5032692583979251216}
-  DragGhostImage: {fileID: 488884233441597601}
+  PortConfigPanel: {fileID: 0}
+  WarehousePanel: {fileID: 0}
+  DarkBackgroundGroup: {fileID: 0}
 --- !u!1 &6578042250618105677
 GameObject:
   m_ObjectHideFlags: 0
@@ -2099,8 +2102,8 @@ MonoBehaviour:
       m_Calls: []
   m_text: 2
   m_isRightToLeft: 0
-  m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
-  m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
+  m_fontAsset: {fileID: 11400000, guid: cd7d7f8b304485c4f8ba302e1cee29fb, type: 2}
+  m_sharedMaterial: {fileID: -3635400815661602693, guid: cd7d7f8b304485c4f8ba302e1cee29fb, type: 2}
   m_fontSharedMaterials: []
   m_fontMaterial: {fileID: 0}
   m_fontMaterials: []
@@ -2799,8 +2802,8 @@ MonoBehaviour:
       m_Calls: []
   m_text: 1
   m_isRightToLeft: 0
-  m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
-  m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
+  m_fontAsset: {fileID: 11400000, guid: cd7d7f8b304485c4f8ba302e1cee29fb, type: 2}
+  m_sharedMaterial: {fileID: -3635400815661602693, guid: cd7d7f8b304485c4f8ba302e1cee29fb, type: 2}
   m_fontSharedMaterials: []
   m_fontMaterial: {fileID: 0}
   m_fontMaterials: []
